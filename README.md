@@ -1,3 +1,17 @@
+# CircuitJS Responsive - Modified Version
+
+> **This is a modified fork** of the original CircuitJS by Paul Falstad.
+> 
+> **Modifications made:**
+> - Responsive CSS for mobile and tablet devices
+> - Touch-friendly interface
+> - Optimized for various screen sizes
+>
+> **Original repository:** https://github.com/pfalstad/circuitjs1
+
+---
+
+
 # CircuitJS1
 
 ## Introduction
