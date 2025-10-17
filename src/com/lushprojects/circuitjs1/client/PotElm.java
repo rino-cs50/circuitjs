@@ -33,7 +33,7 @@ class PotElm extends CircuitElm implements Command, MouseWheelHandler {
 	double position, maxResistance, resistance1, resistance2;
 	double current1, current2, current3;
 	double curcount1, curcount2, curcount3;
-	Scrollbar slider;
+	HtmlSlider slider;
 	Label label;
 	String sliderText;
 	public PotElm(int xx, int yy) {
@@ -74,7 +74,7 @@ class PotElm extends CircuitElm implements Command, MouseWheelHandler {
     	sim.addWidgetToVerticalPanel(label = new Label(sliderText));
     	label.addStyleName("topSpace");
     	int value = (int) Math.round((position-.005)/.0099);
-    	sim.addWidgetToVerticalPanel(slider = new Scrollbar(Scrollbar.HORIZONTAL, value, 1, 0, 101, this, this));
+    	sim.addWidgetToVerticalPanel(slider = new HtmlSlider(Scrollbar.HORIZONTAL, value, 1, 0, 101, this, this));
    // 	sim.verticalPanel.validate();
    // 	slider.addAdjustmentListener(this);
     }

@@ -25,7 +25,7 @@ import com.google.gwt.event.dom.client.MouseWheelEvent;
 import com.google.gwt.event.dom.client.MouseWheelHandler;
 
     class VarRailElm extends RailElm implements MouseWheelHandler {
-	Scrollbar slider;
+	HtmlSlider slider;
 	Label label;
 	String sliderText;
 	public VarRailElm(int xx, int yy) {
@@ -52,7 +52,7 @@ import com.google.gwt.event.dom.client.MouseWheelHandler;
 	    sim.addWidgetToVerticalPanel(label = new Label(Locale.LS(sliderText)));
 	    label.addStyleName("topSpace");
 	    int value = (int) ((frequency-bias)*100/(maxVoltage-bias));
-	    sim.addWidgetToVerticalPanel(slider = new Scrollbar(Scrollbar.HORIZONTAL, value, 1, 0, 101 ,
+	    sim.addWidgetToVerticalPanel(slider = new HtmlSlider(Scrollbar.HORIZONTAL, value, 1, 0, 101 ,
 	    		null, this));
 //	    sim.verticalPanel.validate();
 	}

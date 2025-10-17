@@ -78,6 +78,7 @@ import com.google.gwt.user.client.Timer;
 import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.ui.VerticalPanel;
 import com.google.gwt.user.client.ui.HorizontalPanel;
+import com.google.gwt.user.client.ui.FlowPanel;
 import com.google.gwt.event.dom.client.ClickHandler;
 import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.event.dom.client.DoubleClickHandler;
@@ -101,12 +102,15 @@ import com.google.gwt.user.client.Window.Navigator;
 import com.google.gwt.event.logical.shared.ResizeEvent;
 import com.google.gwt.event.logical.shared.ResizeHandler;
 import com.google.gwt.user.client.DOM;
+import com.google.gwt.core.client.Scheduler.ScheduledCommand;
 
 public class CirSim implements MouseDownHandler, MouseMoveHandler, MouseUpHandler,
 ClickHandler, DoubleClickHandler, ContextMenuHandler, NativePreviewHandler,
 MouseOutHandler, MouseWheelHandler {
 
+    Timer resizeTimer = null;
     Random random;
+    Button mobileMenuBtn;
     Button resetButton;
     Button runStopButton;
     Button dumpMatrixButton;
@@ -132,9 +136,9 @@ MouseOutHandler, MouseWheelHandler {
     CheckboxMenuItem toolbarCheckItem;
     private Label powerLabel;
     private Label titleLabel;
-    private Scrollbar speedBar;
-    private Scrollbar currentBar;
-    private Scrollbar powerBar;
+    private HtmlSlider speedBar;
+    private HtmlSlider currentBar;
+    private HtmlSlider powerBar;
     MenuBar elmMenuBar;
     MenuItem elmEditMenuItem;
     MenuItem elmCutMenuItem;
@@ -243,6 +247,7 @@ MouseOutHandler, MouseWheelHandler {
     int circuitPermute[];
     boolean simRunning;
     boolean circuitNonLinear;
+    boolean hideSidebar = false;
     int voltageSourceCount;
     int circuitMatrixSize, circuitMatrixFullSize;
     boolean circuitNeedsMap;
@@ -270,8 +275,8 @@ MouseOutHandler, MouseWheelHandler {
     DockLayoutPanel layoutPanel;
     MenuBar menuBar;
     MenuBar fileMenuBar;
-    VerticalPanel verticalPanel;
-    CellPanel buttonPanel;
+    FlowPanel verticalPanel;
+    FlowPanel buttonPanel;
     private boolean mouseDragging;
     double scopeHeightFraction = 0.2;
 
@@ -283,6 +288,8 @@ MouseOutHandler, MouseWheelHandler {
 
     Canvas cv;
     Context2d cvcontext;
+    Canvas backcv;
+    Context2d backcontext;
 
     // canvas width/height in px (before device pixel ratio scaling)
     int canvasWidth, canvasHeight;
@@ -322,37 +329,109 @@ MouseOutHandler, MouseWheelHandler {
 	return style.display != 'none';
     }-*/;
     
-    public void setCanvasSize(){
-    	int width, height;
-    	width=(int)RootLayoutPanel.get().getOffsetWidth();
-    	height=(int)RootLayoutPanel.get().getOffsetHeight();
-    	height=height-(hideMenu?0:MENUBARHEIGHT);
+    public void setCanvasSize() {
+	    int width, height;
+	    width = (int) RootLayoutPanel.get().getOffsetWidth();
+	    height = (int) RootLayoutPanel.get().getOffsetHeight();
+	    height = height - (hideMenu ? 0 : MENUBARHEIGHT);
 
-    	//not needed on mobile since the width of the canvas' container div is set to 100% in ths CSS file
-    	if (!isMobile(sidePanelCheckboxLabel))
-    	    width=width-VERTICALPANELWIDTH;
-	if (toolbarCheckItem.getState())
-	    height -= TOOLBARHEIGHT;
+	    boolean isMobile = width <= 768;
+	    boolean isInLayout = layoutPanel.getWidgetIndex(verticalPanel) != -1;
 
-    	width = Math.max(width, 0);   // avoid exception when setting negative width
-    	height = Math.max(height, 0);
-    	
-		if (cv != null) {
-			cv.setWidth(width + "PX");
-			cv.setHeight(height + "PX");
-			canvasWidth = width;
-			canvasHeight = height;
-			float scale = devicePixelRatio();
-			cv.setCoordinateSpaceWidth((int)(width*scale));
-			cv.setCoordinateSpaceHeight((int)(height*scale));
+	    int newSidebarWidth;
+	    
+	    if (isMobile) {
+		    // MOBILE: Keep in layout with width 0, CSS positions it as overlay
+		    newSidebarWidth = 0;
+		    
+		    verticalPanel.removeStyleName("visible");
+		    RootPanel.getBodyElement().removeClassName("sidebar-open");
+		    
+		    // Set width to 0 in layout
+		    if (isInLayout && !hideSidebar) {
+		        layoutPanel.setWidgetSize(verticalPanel, 0);
+		    }
+		    
+		    // Apply mobile styles AFTER layout completes
+		    Scheduler.get().scheduleDeferred(new ScheduledCommand() {
+		        public void execute() {
+		            verticalPanel.getElement().setAttribute("style", 
+		                "position: fixed !important; " +
+		                "left: auto !important; " +
+		                "right: 0 !important; " +
+		                "top: 80px !important; " +
+		                "width: 300px !important; " +
+		                "max-width: 80vw !important; " +
+		                "height: calc(100vh - 80px) !important; " +
+		                "transform: translateX(100%) !important; " +
+		                "z-index: 999 !important; " +
+		                "transition: transform 0.3s ease; " +
+		                "opacity: 1 !important; " +  // Show after positioning
+		                "background: #000000; " +
+		                "padding: 12px; " +
+		                "box-shadow: -2px 0 10px rgba(0,0,0,0.5);");
+		        }
+		    });
+		} else {
+		    // DESKTOP: Normal sidebar width in layout
+		    int calculatedWidth = width / 4;
+		    if (calculatedWidth > 350) calculatedWidth = 350;
+		    if (calculatedWidth < 200) calculatedWidth = 200;
+		    newSidebarWidth = calculatedWidth;
+		    
+		    verticalPanel.removeStyleName("visible");
+		    RootPanel.getBodyElement().removeClassName("sidebar-open");
+		    
+		    // Clear mobile inline styles and show
+		    verticalPanel.getElement().removeAttribute("style");
+		    verticalPanel.getElement().getStyle().setProperty("opacity", "1");
+		    
+		    // Restore sidebar width in layout
+		    if (isInLayout && !hideSidebar) {
+		        layoutPanel.setWidgetSize(verticalPanel, newSidebarWidth);
+		    }
 		}
 
-    	setCircuitArea();
+	    VERTICALPANELWIDTH = newSidebarWidth;
 
-	// recenter circuit in case canvas was hidden at startup
-    	if (transform[0] == 0)
-    	    centreCircuit();
-    }
+	    // Calculate canvas dimensions
+	    if (!isMobile) {
+	        width = width - VERTICALPANELWIDTH;
+	    }
+	    
+	    if (toolbarCheckItem.getState())
+	        height -= TOOLBARHEIGHT;
+
+	    width = Math.max(width, 0);
+	    height = Math.max(height, 0);
+
+	    if (cv != null) {
+	        cv.setWidth(width + "PX");
+	        cv.setHeight(height + "PX");
+	        canvasWidth = width;
+	        canvasHeight = height;
+	        float scale = devicePixelRatio();
+	        cv.setCoordinateSpaceWidth((int) (width * scale));
+	        cv.setCoordinateSpaceHeight((int) (height * scale));
+	        
+	        if (backcv != null) {
+	            backcv.setWidth(width + "PX");
+	            backcv.setHeight(height + "PX");
+	            backcv.setCoordinateSpaceWidth((int) (width * scale));
+	            backcv.setCoordinateSpaceHeight((int) (height * scale));
+	        }
+	    }
+
+	    setCircuitArea();
+	    
+	    if (transform[0] == 0)
+	        centreCircuit();
+
+	    // Control mobile button visibility
+	    if (mobileMenuBtn != null) {
+	        mobileMenuBtn.setVisible(isMobile);
+	    }
+	}
     
     void setCircuitArea() {
     	int height = canvasHeight;
@@ -386,14 +465,6 @@ MouseOutHandler, MouseWheelHandler {
     
     public void init() {
 
-	//sets the meta tag to allow the css media queries to work
-	MetaElement meta = Document.get().createMetaElement();
-	meta.setName("viewport");
-	meta.setContent("width=device-width");
-	NodeList<com.google.gwt.dom.client.Element> node = Document.get().getElementsByTagName("head");
-	node.getItem(0).appendChild(meta);
-
-	
 	boolean printable = false;
 	boolean convention = true;
 	boolean euroRes = false;
@@ -514,34 +585,21 @@ MouseOutHandler, MouseWheelHandler {
 	aboutItem.setScheduledCommand(new MyCommand("file","about"));
 
 	int width=(int)RootLayoutPanel.get().getOffsetWidth();
-	VERTICALPANELWIDTH = width/5;
-	if (VERTICALPANELWIDTH > 166)
-	    VERTICALPANELWIDTH = 166;
-	if (VERTICALPANELWIDTH < 128)
-	    VERTICALPANELWIDTH = 128;
+	VERTICALPANELWIDTH = width/4;  // Changed from /5 to /4 for 25%
+	if (VERTICALPANELWIDTH > 350)  // Increased max width
+	    VERTICALPANELWIDTH = 350;
+	if (VERTICALPANELWIDTH < 200)  // Increased min width
+	    VERTICALPANELWIDTH = 200;
 
 	menuBar = new MenuBar();
 	menuBar.addItem(Locale.LS("File"), fileMenuBar);
-	verticalPanel=new VerticalPanel();
+	verticalPanel=new FlowPanel();
+	verticalPanel.setStyleName("circuit-sidebar");
+	verticalPanel.getElement().getStyle().setProperty("opacity", "0");
 
-	verticalPanel.getElement().addClassName("verticalPanel");
-	verticalPanel.getElement().setId("painel");
-	Element sidePanelCheckbox = DOM.createInputCheck();
-	sidePanelCheckboxLabel = DOM.createLabel();
-	sidePanelCheckboxLabel.addClassName("triggerLabel");
-	sidePanelCheckbox.setId("trigger");
-	sidePanelCheckboxLabel.setAttribute("for", "trigger" );
-	sidePanelCheckbox.addClassName("trigger");
-	Element topPanelCheckbox = DOM.createInputCheck(); 
-	Element topPanelCheckboxLabel = DOM.createLabel();
-	topPanelCheckbox.setId("toptrigger");
-	topPanelCheckbox.addClassName("toptrigger");
-	topPanelCheckboxLabel.addClassName("toptriggerlabel");
-	topPanelCheckboxLabel.setAttribute("for", "toptrigger");
-
-	// make buttons side by side if there's room
-	buttonPanel=(VERTICALPANELWIDTH == 166) ? new HorizontalPanel() : new VerticalPanel();
-
+	buttonPanel = new FlowPanel();
+	buttonPanel.addStyleName("button-panel");
+	
 	m = new MenuBar(true);
 	m.addItem(undoItem = menuItemWithShortcut("ccw", "Undo", Locale.LS(ctrlMetaKey + "Z"), new MyCommand("edit","undo")));
 	m.addItem(redoItem = menuItemWithShortcut("cw", "Redo", Locale.LS(ctrlMetaKey + "Y"), new MyCommand("edit","redo")));
@@ -675,24 +733,17 @@ MouseOutHandler, MouseWheelHandler {
 	composeMainMenu(drawMenuBar, 1);
 	loadShortcuts();
 
-	DOM.appendChild(layoutPanel.getElement(), topPanelCheckbox);
-	DOM.appendChild(layoutPanel.getElement(), topPanelCheckboxLabel);	
-
 	toolbar = new Toolbar();
 	toolbar.setEuroResistors(euroSetting);
 	if (!hideMenu)
 	    layoutPanel.addNorth(menuBar, MENUBARHEIGHT);
 
-	if (hideSidebar)
-	    VERTICALPANELWIDTH = 0;
-	else {
-		DOM.appendChild(layoutPanel.getElement(), sidePanelCheckbox);
-		DOM.appendChild(layoutPanel.getElement(), sidePanelCheckboxLabel);
-	    layoutPanel.addEast(verticalPanel, VERTICALPANELWIDTH);
-	}
 	layoutPanel.addNorth(toolbar, TOOLBARHEIGHT);
-	menuBar.getElement().insertFirst(menuBar.getElement().getChild(1));
-	menuBar.getElement().getFirstChildElement().setAttribute("onclick", "document.getElementsByClassName('toptrigger')[0].checked = false");
+
+	// Add sidebar to layoutPanel initially (BEFORE canvas)
+	if (!hideSidebar)
+	    layoutPanel.addEast(verticalPanel, VERTICALPANELWIDTH);
+
 	RootLayoutPanel.get().add(layoutPanel);
 
 	cv =Canvas.createIfSupported();
@@ -701,68 +752,123 @@ MouseOutHandler, MouseWheelHandler {
 	    return;
 	}
 
-	Window.addResizeHandler(new ResizeHandler() {
-	    public void onResize(ResizeEvent event) {
-		repaint();
+	cvcontext=cv.getContext2d();
+	backcv=Canvas.createIfSupported();
+	backcontext=backcv.getContext2d();
+
+	// Initialize back canvas size immediately to prevent "empty canvas" error
+	int tempWidth = (int)RootLayoutPanel.get().getOffsetWidth();
+	int tempHeight = (int)RootLayoutPanel.get().getOffsetHeight();
+	if (tempWidth > 0 && tempHeight > 0) {
+	    float scale = devicePixelRatio();
+	    backcv.setWidth(tempWidth + "PX");
+	    backcv.setHeight(tempHeight + "PX");
+	    backcv.setCoordinateSpaceWidth((int)(tempWidth * scale));
+	    backcv.setCoordinateSpaceHeight((int)(tempHeight * scale));
+	}
+
+	setToolbar();
+
+	
+	// Add canvas LAST (it becomes the CENTER widget)
+	layoutPanel.add(cv);
+
+	// Now call setCanvasSize to adjust for mobile/desktop
+	setCanvasSize();
+
+	// Create horizontal button row
+	FlowPanel buttonRow = new FlowPanel();
+	buttonRow.addStyleName("button-row");
+	verticalPanel.add(buttonRow);
+
+	// Mobile menu toggle button - store as field for later visibility control
+	mobileMenuBtn = new Button("☰");
+	mobileMenuBtn.setHTML("<i class='fas fa-bars'></i>");
+	mobileMenuBtn.addStyleName("mobile-menu-button");
+
+	mobileMenuBtn.addClickHandler(new ClickHandler() {
+	    public void onClick(ClickEvent event) {
+	        // Toggle visibility
+	        String className = verticalPanel.getElement().getClassName();
+	        if (className.contains("visible")) {
+	            // Hide sidebar
+	            verticalPanel.removeStyleName("visible");
+	            RootPanel.getBodyElement().removeClassName("sidebar-open");
+	            // Slide out to the right
+	            verticalPanel.getElement().getStyle().setProperty("transform", "translateX(100%)");
+	        } else {
+	            // Show sidebar
+	            verticalPanel.addStyleName("visible");
+	            RootPanel.getBodyElement().addClassName("sidebar-open");
+	            // Slide in from the right
+	            verticalPanel.getElement().getStyle().setProperty("transform", "translateX(0)");
+	        }
 	    }
 	});
 
-	cvcontext=cv.getContext2d();
-	setToolbar(); // calls setCanvasSize()
-	layoutPanel.add(cv);
-	verticalPanel.add(buttonPanel);
-	buttonPanel.add(resetButton = new Button(Locale.LS("Reset")));
+	// Add mobile button to root panel
+	RootPanel.get().add(mobileMenuBtn);
+
+	// Play/Pause button with label
+	buttonRow.add(runStopButton = new Button());
+	runStopButton.setHTML("<i class='button-icon fas fa-play'>▶</i><span>Play</span>");
+	runStopButton.addClickHandler(new ClickHandler() {
+	    public void onClick(ClickEvent event) {
+		setSimRunning(!simIsRunning());
+	    }
+	});
+	runStopButton.setStylePrimaryName("topButton-play");
+
+	// Reset button
+	buttonRow.add(resetButton = new Button());
+	resetButton.setHTML("<i class='button-icon fas fa-rotate-left'>⟲</i><span>Reset</span>");
 	resetButton.addClickHandler(new ClickHandler() {
 	    public void onClick(ClickEvent event) {
 		resetAction();
 	    }
 	});
 	resetButton.setStylePrimaryName("topButton");
-	buttonPanel.add(runStopButton = new Button(Locale.LSHTML("<Strong>RUN</Strong>&nbsp;/&nbsp;Stop")));
-	runStopButton.addClickHandler(new ClickHandler() {
-	    public void onClick(ClickEvent event) {
-		setSimRunning(!simIsRunning());
-	    }
-	});
 
-	
-/*
+	/*
 	dumpMatrixButton = new Button("Dump Matrix");
 	dumpMatrixButton.addClickHandler(new ClickHandler() {
 	    public void onClick(ClickEvent event) { dumpMatrix = true; }});
 	verticalPanel.add(dumpMatrixButton);// IES for debugging
-*/
-	
+	*/
 
+	// Create LoadFile but don't add it to the panel (hides the Browse button)
 	if (LoadFile.isSupported())
-	    verticalPanel.add(loadFileInput = new LoadFile(this));
+	    loadFileInput = new LoadFile(this);
+	RootPanel.get().add(loadFileInput);
 
 	Label l;
 	verticalPanel.add(l = new Label(Locale.LS("Simulation Speed")));
 	l.addStyleName("topSpace");
 
 	// was max of 140
-	verticalPanel.add( speedBar = new Scrollbar(Scrollbar.HORIZONTAL, 3, 1, 0, 260));
+	verticalPanel.add( speedBar = new HtmlSlider(0, 260, 3));
 
 	verticalPanel.add( l = new Label(Locale.LS("Current Speed")));
 	l.addStyleName("topSpace");
-	currentBar = new Scrollbar(Scrollbar.HORIZONTAL, 50, 1, 1, 100);
+	currentBar = new HtmlSlider(1, 100, 50);
 	verticalPanel.add(currentBar);
-	verticalPanel.add(powerLabel = new Label (Locale.LS("Power Brightness")));
+
+	// Hide Power Brightness - create but don't add to panel
+	powerLabel = new Label (Locale.LS("Power Brightness"));
 	powerLabel.addStyleName("topSpace");
-	verticalPanel.add(powerBar = new Scrollbar(Scrollbar.HORIZONTAL,
-		50, 1, 1, 100));
+	powerBar = new HtmlSlider(1, 100, 50);
 	setPowerBarEnable();
 
-	//	verticalPanel.add(new Label(""));
-	//        Font f = new Font("SansSerif", 0, 10);
+	// Additional Controls Section
+	Label controlsSection = new Label(Locale.LS("Additional Controls"));
+	controlsSection.addStyleName("section-header");
+	verticalPanel.add(controlsSection);
+
+	// Current Circuit label
 	l = new Label(Locale.LS("Current Circuit:"));
 	l.addStyleName("topSpace");
-	//        l.setFont(f);
-	titleLabel = new Label("Label");
-	//        titleLabel.setFont(f);
 	verticalPanel.add(l);
-	verticalPanel.add(titleLabel);
+	verticalPanel.add(titleLabel = new Label(""));
 
 	verticalPanel.add(iFrame = new Frame("iframe.html"));
 	iFrame.setWidth(VERTICALPANELWIDTH+"px");
@@ -877,6 +983,65 @@ MouseOutHandler, MouseWheelHandler {
 	Event.addNativePreviewHandler(this);
 	cv.addMouseWheelHandler(this);
 
+	Window.addResizeHandler(new ResizeHandler() {
+	    public void onResize(ResizeEvent event) {
+	        // Hide sidebar immediately to prevent flickering
+	        verticalPanel.getElement().getStyle().setProperty("opacity", "0");
+	        verticalPanel.getElement().getStyle().setProperty("transition", "none");
+	        
+	        // Immediately resize canvas only
+	        int width = (int) RootLayoutPanel.get().getOffsetWidth();
+	        int height = (int) RootLayoutPanel.get().getOffsetHeight();
+	        height = height - (hideMenu ? 0 : MENUBARHEIGHT);
+	        
+	        if (toolbarCheckItem.getState())
+	            height -= TOOLBARHEIGHT;
+	        
+	        boolean isMobile = width <= 768;
+	        if (!isMobile) {
+	            width = width - VERTICALPANELWIDTH;
+	        }
+	        
+	        width = Math.max(width, 0);
+	        height = Math.max(height, 0);
+	        
+	        if (cv != null) {
+	            cv.setWidth(width + "PX");
+	            cv.setHeight(height + "PX");
+	            canvasWidth = width;
+	            canvasHeight = height;
+	            float scale = devicePixelRatio();
+	            cv.setCoordinateSpaceWidth((int) (width * scale));
+	            cv.setCoordinateSpaceHeight((int) (height * scale));
+	            
+	            if (backcv != null) {
+	                backcv.setWidth(width + "PX");
+	                backcv.setHeight(height + "PX");
+	                backcv.setCoordinateSpaceWidth((int) (width * scale));
+	                backcv.setCoordinateSpaceHeight((int) (height * scale));
+	            }
+	        }
+	        
+	        setCircuitArea();
+	        repaint();
+	        
+	        // Delay full layout update
+	        if (resizeTimer != null) {
+	            resizeTimer.cancel();
+	        }
+	        resizeTimer = new Timer() {
+	            public void run() {
+	                setCanvasSize();
+	                if (transform[0] != 0) {
+	                    centreCircuit();
+	                }
+	                repaint();
+	            }
+	        };
+	        resizeTimer.schedule(300);
+	    }
+	});
+	
 	Window.addWindowClosingHandler(new Window.ClosingHandler() {
 	    public void onWindowClosing(ClosingEvent event) {
 		// there is a bug in electron that makes it impossible to close the app if this warning is given
@@ -1454,21 +1619,21 @@ MouseOutHandler, MouseWheelHandler {
 
     
     public void setSimRunning(boolean s) {
-    	if (s) {
-    	    	if (stopMessage != null)
-    	    	    return;
-    		simRunning = true;
-    		runStopButton.setHTML(Locale.LSHTML("<strong>RUN</strong>&nbsp;/&nbsp;Stop"));
-    		runStopButton.setStylePrimaryName("topButton");
-    		timer.scheduleRepeating(FASTTIMER);
-    	} else {
-    		simRunning = false;
-    		runStopButton.setHTML(Locale.LSHTML("Run&nbsp;/&nbsp;<strong>STOP</strong>"));
-    		runStopButton.setStylePrimaryName("topButton-red");
-    		timer.cancel();
-		repaint();
-    	}
-    }
+	    if (s) {
+	        if (stopMessage != null)
+	            return;
+	        simRunning = true;
+	        runStopButton.setHTML("<i class='button-icon fas fa-pause'>⏸</i><span>Pause</span>");
+	        runStopButton.setStylePrimaryName("topButton-pause");
+	        timer.scheduleRepeating(FASTTIMER);
+	    } else {
+	        simRunning = false;
+	        runStopButton.setHTML("<i class='button-icon fas fa-play'>▶</i><span>Play</span>");
+	        runStopButton.setStylePrimaryName("topButton-play");
+	        timer.cancel();
+	        repaint();
+	    }
+	}
     
     public boolean simIsRunning() {
     	return simRunning;
@@ -1493,231 +1658,239 @@ MouseOutHandler, MouseWheelHandler {
     //                     UPDATE CIRCUIT
     
     public void updateCircuit() {
-        PerfMonitor perfmon = new PerfMonitor();
-        perfmon.startContext("updateCircuit()");
+	    PerfMonitor perfmon = new PerfMonitor();
+	    perfmon.startContext("updateCircuit()");
 
-        checkCanvasSize();
-        
-        // Analyze circuit
-        boolean didAnalyze = analyzeFlag;
-        if (analyzeFlag || dcAnalysisFlag) {
-            perfmon.startContext("analyzeCircuit()");
-            analyzeCircuit();
-            analyzeFlag = false;
-            perfmon.stopContext();
-        }
-        
-        // Stamp circuit
-        if (needsStamp && simRunning) {
-            perfmon.startContext("stampCircuit()");
-            try {
-                preStampAndStampCircuit();
-            } catch (Exception e) {
-                stop("Exception in stampCircuit()", null);
-		GWT.log("Exception in stampCircuit", e);
-            }
-            perfmon.stopContext();
-        }
-        
-        if (stopElm != null && stopElm != mouseElm)
-            stopElm.setMouseElm(true);
-        
-        setupScopes();
+	    checkCanvasSize();
+	    
+	    // Analyze circuit
+	    boolean didAnalyze = analyzeFlag;
+	    if (analyzeFlag || dcAnalysisFlag) {
+	        perfmon.startContext("analyzeCircuit()");
+	        analyzeCircuit();
+	        analyzeFlag = false;
+	        perfmon.stopContext();
+	    }
+	    
+	    // Stamp circuit
+	    if (needsStamp && simRunning) {
+	        perfmon.startContext("stampCircuit()");
+	        try {
+	            preStampAndStampCircuit();
+	        } catch (Exception e) {
+	            stop("Exception in stampCircuit()", null);
+	            GWT.log("Exception in stampCircuit", e);
+	        }
+	        perfmon.stopContext();
+	    }
+	    
+	    if (stopElm != null && stopElm != mouseElm)
+	        stopElm.setMouseElm(true);
+	    
+	    setupScopes();
 
-        Graphics g = new Graphics(cvcontext);
+	    // IMPORTANT: Draw to BACK buffer
+	    Graphics g = new Graphics(backcontext);
 
-        if (printableCheckItem.getState()) {
-            CircuitElm.whiteColor = Color.black;
-            CircuitElm.lightGrayColor = Color.black;
-            g.setColor(Color.white);
-            cv.getElement().getStyle().setBackgroundColor("#fff");
-        } else {
-            CircuitElm.whiteColor = Color.white;
-            CircuitElm.lightGrayColor = Color.lightGray;
-            g.setColor(Color.black);
-            cv.getElement().getStyle().setBackgroundColor("#000");
-        }
+	    // Set background color on VISIBLE canvas (user sees this)
+	    if (printableCheckItem.getState()) {
+	        CircuitElm.whiteColor = Color.black;
+	        CircuitElm.lightGrayColor = Color.black;
+	        g.setColor(Color.white);
+	        cv.getElement().getStyle().setBackgroundColor("#fff");
+	    } else {
+	        CircuitElm.whiteColor = Color.white;
+	        CircuitElm.lightGrayColor = Color.lightGray;
+	        g.setColor(Color.black);
+	        cv.getElement().getStyle().setBackgroundColor("#000");
+	    }
 
-        // Clear the frame
-        g.fillRect(0, 0, canvasWidth, canvasHeight);
+	    // Clear the back buffer frame
+	    g.fillRect(0, 0, canvasWidth, canvasHeight);
 
-        // Run circuit
-        if (simRunning) {
-            if (needsStamp)
-                console("needsStamp while simRunning?");
+	    // Run circuit
+	    if (simRunning) {
+	        if (needsStamp)
+	            console("needsStamp while simRunning?");
 
-            perfmon.startContext("runCircuit()");
-            try {                
-                runCircuit(didAnalyze);
-            } catch (Exception e) {
-                debugger();
-                console("exception in runCircuit " + e);
-                e.printStackTrace();
-            }
-            perfmon.stopContext();
-        }
+	        perfmon.startContext("runCircuit()");
+	        try {                
+	            runCircuit(didAnalyze);
+	        } catch (Exception e) {
+	            debugger();
+	            console("exception in runCircuit " + e);
+	            e.printStackTrace();
+	        }
+	        perfmon.stopContext();
+	    }
 
-        long sysTime = System.currentTimeMillis();
-        if (simRunning) {
-            if (lastTime != 0) {
-                int inc = (int) (sysTime - lastTime);
-                double c = currentBar.getValue();
-                c = java.lang.Math.exp(c / 3.5 - 14.2);
-                CircuitElm.currentMult = 1.7 * inc * c;
-                if (!conventionCheckItem.getState())
-                    CircuitElm.currentMult = -CircuitElm.currentMult;
-            }
-            lastTime = sysTime;
-        } else {
-            lastTime = 0;
-        }
+	    long sysTime = System.currentTimeMillis();
+	    if (simRunning) {
+	        if (lastTime != 0) {
+	            int inc = (int) (sysTime - lastTime);
+	            double c = currentBar.getValue();
+	            c = java.lang.Math.exp(c / 3.5 - 14.2);
+	            CircuitElm.currentMult = 1.7 * inc * c;
+	            if (!conventionCheckItem.getState())
+	                CircuitElm.currentMult = -CircuitElm.currentMult;
+	        }
+	        lastTime = sysTime;
+	    } else {
+	        lastTime = 0;
+	    }
 
-        if (sysTime - secTime >= 1000) {
-            framerate = frames;
-            steprate = steps;
-            frames = 0;
-            steps = 0;
-            secTime = sysTime;
-        }
+	    if (sysTime - secTime >= 1000) {
+	        framerate = frames;
+	        steprate = steps;
+	        frames = 0;
+	        steps = 0;
+	        secTime = sysTime;
+	    }
 
-        CircuitElm.powerMult = Math.exp(powerBar.getValue() / 4.762 - 7);
+	    CircuitElm.powerMult = Math.exp(powerBar.getValue() / 4.762 - 7);
 
-        perfmon.startContext("graphics");
+	    perfmon.startContext("graphics");
 
-        g.setFont(CircuitElm.unitsFont);
+	    g.setFont(CircuitElm.unitsFont);
 
-        g.context.setLineCap(LineCap.ROUND);
+	    g.context.setLineCap(LineCap.ROUND);
 
-        if (noEditCheckItem.getState())
-            g.drawLock(20, 30);
-        
-        g.setColor(Color.white);
-        
-        // Set the graphics transform to deal with zoom and offset
-        double scale = devicePixelRatio();
-        cvcontext.setTransform(transform[0] * scale, 0, 0, transform[3] * scale, transform[4] * scale, transform[5] * scale);
+	    if (noEditCheckItem.getState())
+	        g.drawLock(20, 30);
+	    
+	    g.setColor(Color.white);
+	    
+	    // Set the graphics transform on BACK buffer
+	    double scale = devicePixelRatio();
+	    backcontext.setTransform(transform[0] * scale, 0, 0, transform[3] * scale, transform[4] * scale, transform[5] * scale);
 
-        // Draw each element
-        perfmon.startContext("elm.draw()");
-        for (int i = 0; i != elmList.size(); i++) {
-            if (powerCheckItem.getState())
-                g.setColor(Color.gray);
-            
-            getElm(i).draw(g);
-        }
-        perfmon.stopContext();
+	    // Draw each element to back buffer
+	    perfmon.startContext("elm.draw()");
+	    for (int i = 0; i != elmList.size(); i++) {
+	        if (powerCheckItem.getState())
+	            g.setColor(Color.gray);
+	        
+	        getElm(i).draw(g);
+	    }
+	    perfmon.stopContext();
 
-        // Draw posts normally
-        if (mouseMode != CirSim.MODE_DRAG_ROW && mouseMode != CirSim.MODE_DRAG_COLUMN) {
-            for (int i = 0; i != postDrawList.size(); i++)
-                CircuitElm.drawPost(g, postDrawList.get(i));
-        }
+	    // Draw posts normally
+	    if (mouseMode != CirSim.MODE_DRAG_ROW && mouseMode != CirSim.MODE_DRAG_COLUMN) {
+	        for (int i = 0; i != postDrawList.size(); i++)
+	            CircuitElm.drawPost(g, postDrawList.get(i));
+	    }
 
-        // for some mouse modes, what matters is not the posts but the endpoints (which
-        // are only the same for 2-terminal elements). We draw those now if needed
-        if (tempMouseMode == MODE_DRAG_ROW || 
-            tempMouseMode == MODE_DRAG_COLUMN || 
-            tempMouseMode == MODE_DRAG_POST || 
-            tempMouseMode == MODE_DRAG_SELECTED) {
-            for (int i = 0; i != elmList.size(); i++) {
+	    // for some mouse modes, what matters is not the posts but the endpoints (which
+	    // are only the same for 2-terminal elements). We draw those now if needed
+	    if (tempMouseMode == MODE_DRAG_ROW || 
+	        tempMouseMode == MODE_DRAG_COLUMN || 
+	        tempMouseMode == MODE_DRAG_POST || 
+	        tempMouseMode == MODE_DRAG_SELECTED) {
+	        for (int i = 0; i != elmList.size(); i++) {
 
-                CircuitElm ce = getElm(i);
-                // ce.drawPost(g, ce.x , ce.y );
-                // ce.drawPost(g, ce.x2, ce.y2);
-                if (ce != mouseElm || tempMouseMode != MODE_DRAG_POST) {
-                    g.setColor(Color.gray);
-                    g.fillOval(ce.x - 3, ce.y - 3, 7, 7);
-                    g.fillOval(ce.x2 - 3, ce.y2 - 3, 7, 7);
-                } else {
-                    ce.drawHandles(g, CircuitElm.selectColor);
-                }
-            }
-        }
-        
-        // draw handles for elm we're creating
-        if (tempMouseMode == MODE_SELECT && mouseElm != null) {
-            mouseElm.drawHandles(g, CircuitElm.selectColor);
-        }
+	            CircuitElm ce = getElm(i);
+	            // ce.drawPost(g, ce.x , ce.y );
+	            // ce.drawPost(g, ce.x2, ce.y2);
+	            if (ce != mouseElm || tempMouseMode != MODE_DRAG_POST) {
+	                g.setColor(Color.gray);
+	                g.fillOval(ce.x - 3, ce.y - 3, 7, 7);
+	                g.fillOval(ce.x2 - 3, ce.y2 - 3, 7, 7);
+	            } else {
+	                ce.drawHandles(g, CircuitElm.selectColor);
+	            }
+	        }
+	    }
+	    
+	    // draw handles for elm we're creating
+	    if (tempMouseMode == MODE_SELECT && mouseElm != null) {
+	        mouseElm.drawHandles(g, CircuitElm.selectColor);
+	    }
 
-        // draw handles for elm we're dragging
-        if (dragElm != null && (dragElm.x != dragElm.x2 || dragElm.y != dragElm.y2)) {
-            dragElm.draw(g);
-            dragElm.drawHandles(g, CircuitElm.selectColor);
-        }
+	    // draw handles for elm we're dragging
+	    if (dragElm != null && (dragElm.x != dragElm.x2 || dragElm.y != dragElm.y2)) {
+	        dragElm.draw(g);
+	        dragElm.drawHandles(g, CircuitElm.selectColor);
+	    }
 
-        // draw bad connections. do this last so they will not be overdrawn.
-        for (int i = 0; i != badConnectionList.size(); i++) {
-            Point cn = badConnectionList.get(i);
-            g.setColor(Color.red);
-            g.fillOval(cn.x - 3, cn.y - 3, 7, 7);
-        }
+	    // draw bad connections. do this last so they will not be overdrawn.
+	    for (int i = 0; i != badConnectionList.size(); i++) {
+	        Point cn = badConnectionList.get(i);
+	        g.setColor(Color.red);
+	        g.fillOval(cn.x - 3, cn.y - 3, 7, 7);
+	    }
 
-        // draw the selection rect
-        if (selectedArea != null) {
-            g.setColor(CircuitElm.selectColor);
-            g.drawRect(selectedArea.x, selectedArea.y, selectedArea.width, selectedArea.height);
-        }
+	    // draw the selection rect
+	    if (selectedArea != null) {
+	        g.setColor(CircuitElm.selectColor);
+	        g.drawRect(selectedArea.x, selectedArea.y, selectedArea.width, selectedArea.height);
+	    }
 
-        // draw the crosshair cursor
-        if (crossHairCheckItem.getState() && mouseCursorX >= 0
-                && mouseCursorX <= circuitArea.width && mouseCursorY <= circuitArea.height) {
-            g.setColor(Color.gray);
-            int x = snapGrid(inverseTransformX(mouseCursorX));
-            int y = snapGrid(inverseTransformY(mouseCursorY));
-            g.drawLine(x, inverseTransformY(0), x, inverseTransformY(circuitArea.height));
-            g.drawLine(inverseTransformX(0), y, inverseTransformX(circuitArea.width), y);
-        }
+	    // draw the crosshair cursor
+	    if (crossHairCheckItem.getState() && mouseCursorX >= 0
+	            && mouseCursorX <= circuitArea.width && mouseCursorY <= circuitArea.height) {
+	        g.setColor(Color.gray);
+	        int x = snapGrid(inverseTransformX(mouseCursorX));
+	        int y = snapGrid(inverseTransformY(mouseCursorY));
+	        g.drawLine(x, inverseTransformY(0), x, inverseTransformY(circuitArea.height));
+	        g.drawLine(inverseTransformX(0), y, inverseTransformX(circuitArea.width), y);
+	    }
 
-        // reset the graphics scale and translation
-        cvcontext.setTransform(scale, 0, 0, scale, 0, 0);
+	    // reset the graphics scale and translation on BACK buffer
+	    backcontext.setTransform(scale, 0, 0, scale, 0, 0);
 
-        // draw the bottom area i.e. the scope and info section
-        perfmon.startContext("drawBottomArea()");
-        drawBottomArea(g);
-        perfmon.stopContext();
+	    // draw the bottom area i.e. the scope and info section
+	    perfmon.startContext("drawBottomArea()");
+	    drawBottomArea(g);
+	    perfmon.stopContext();
 
-        g.setColor(Color.white);
-        
-        perfmon.stopContext(); // graphics
-        
-        if (stopElm != null && stopElm != mouseElm)
-            stopElm.setMouseElm(false);
-        
-        frames++;
+	    g.setColor(Color.white);
+	    
+	    perfmon.stopContext(); // graphics
+	    
+	    if (stopElm != null && stopElm != mouseElm)
+	        stopElm.setMouseElm(false);
+	    
+	    frames++;
 
-        // if we did DC analysis, we need to re-analyze the circuit with that flag
-        // cleared.
-        if (dcAnalysisFlag) {
-            dcAnalysisFlag = false;
-            analyzeFlag = true;
-        }
+	    // if we did DC analysis, we need to re-analyze the circuit with that flag
+	    // cleared.
+	    if (dcAnalysisFlag) {
+	        dcAnalysisFlag = false;
+	        analyzeFlag = true;
+	    }
 
-        lastFrameTime = lastTime;
+	    lastFrameTime = lastTime;
 
-        perfmon.stopContext(); // updateCircuit
-        
-        if (developerMode) {
-            int height = 15;
-            int increment = 15;
-            g.drawString("Framerate: " + CircuitElm.showFormat.format(framerate), 10, height);
-            g.drawString("Steprate: " + CircuitElm.showFormat.format(steprate), 10, height += increment);
-            g.drawString("Steprate/iter: " + CircuitElm.showFormat.format(steprate / getIterCount()), 10, height += increment);
-            g.drawString("iterc: " + CircuitElm.showFormat.format(getIterCount()), 10, height += increment);
-            g.drawString("Frames: " + frames, 10, height += increment);
-            
-            height += (increment * 2);
-            
-            String perfmonResult = PerfMonitor.buildString(perfmon).toString();
-            String[] splits = perfmonResult.split("\n");
-            for (int x = 0; x < splits.length; x++) {
-                g.drawString(splits[x], 10, height + (increment * x));
-            }
-        }
-        
-        // This should always be the last 
-        // thing called by updateCircuit();
-        callUpdateHook();
-    }
+	    perfmon.stopContext(); // updateCircuit
+	    
+	    if (developerMode) {
+	        int height = 15;
+	        int increment = 15;
+	        g.drawString("Framerate: " + CircuitElm.showFormat.format(framerate), 10, height);
+	        g.drawString("Steprate: " + CircuitElm.showFormat.format(steprate), 10, height += increment);
+	        g.drawString("Steprate/iter: " + CircuitElm.showFormat.format(steprate / getIterCount()), 10, height += increment);
+	        g.drawString("iterc: " + CircuitElm.showFormat.format(getIterCount()), 10, height += increment);
+	        g.drawString("Frames: " + frames, 10, height += increment);
+	        
+	        height += (increment * 2);
+	        
+	        String perfmonResult = PerfMonitor.buildString(perfmon).toString();
+	        String[] splits = perfmonResult.split("\n");
+	        for (int x = 0; x < splits.length; x++) {
+	            g.drawString(splits[x], 10, height + (increment * x));
+	        }
+	    }
+	    
+        	 // CRITICAL: Copy complete back buffer to visible canvas
+        	 // This must be done BEFORE callUpdateHook()
+        	 // Safety check: only copy if back canvas has valid dimensions
+        	 if (backcv.getCoordinateSpaceWidth() > 0 && backcv.getCoordinateSpaceHeight() > 0) {
+        	     cvcontext.drawImage(backcv.getCanvasElement(), 0, 0);
+        	 }
+    	    
+	    // This should always be the last thing called
+	    callUpdateHook();
+	}
 
     void drawBottomArea(Graphics g) {
 	int leftX = 0;

@@ -15,7 +15,7 @@ class LDRElm extends CircuitElm implements Command, MouseWheelHandler {
     double minLux, maxLux;
     double lux;
 
-    Scrollbar slider; 
+    HtmlSlider slider; 
     Label label;
     String sliderText;
 
@@ -61,7 +61,7 @@ class LDRElm extends CircuitElm implements Command, MouseWheelHandler {
 	sim.addWidgetToVerticalPanel(label = new Label(sliderText));
 	label.addStyleName("topSpace");
 	int value = (int) (position*100);
-	sim.addWidgetToVerticalPanel(slider = new Scrollbar(Scrollbar.HORIZONTAL, value, 1, 0, 101, this, this));
+	sim.addWidgetToVerticalPanel(slider = new HtmlSlider(Scrollbar.HORIZONTAL, value, 1, 0, 101, this, this));
     }
 
     public void execute() {

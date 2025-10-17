@@ -58,7 +58,7 @@ CheckBox rmsBox, dutyBox, viBox, xyBox, resistanceBox, ibBox, icBox, ieBox, vbeB
 CheckBox elmInfoBox;
 TextBox labelTextBox, manualScaleTextBox, divisionsTextBox;
 Button applyButton, scaleUpButton, scaleDownButton;
-Scrollbar speedBar,positionBar;
+HtmlSlider speedBar,positionBar;
 Scope scope;
 Grid grid, vScaleGrid, hScaleGrid;
 int nx, ny;
@@ -311,7 +311,7 @@ labelledGridManager gridLabels;
 		positionLabel= new Label(Locale.LS("Position"));
 		vScaleGrid.setWidget(1,0, positionLabel);
 		vScaleGrid.getCellFormatter().setVerticalAlignment(0, 0, HasVerticalAlignment.ALIGN_MIDDLE);
-		positionBar = new Scrollbar(Scrollbar.HORIZONTAL,0, 1, -Scope.V_POSITION_STEPS, Scope.V_POSITION_STEPS, new Command() {
+		positionBar = new HtmlSlider(Scrollbar.HORIZONTAL,0, 1, -Scope.V_POSITION_STEPS, Scope.V_POSITION_STEPS, new Command() {
 		    public void execute() {
 			positionBarChanged();
 		    }
@@ -367,7 +367,7 @@ labelledGridManager gridLabels;
 		hScaleGrid = new Grid(2,4);
 		hScaleLabel = new expandingLabel(Locale.LS("Horizontal Scale"), displayScales);
 		hScaleGrid.setWidget(0, 0, hScaleLabel.p);
-		speedBar = new Scrollbar(Scrollbar.HORIZONTAL, 2, 1, 0, 11, new Command() {
+		speedBar = new HtmlSlider(Scrollbar.HORIZONTAL, 2, 1, 0, 11, new Command() {
 		    public void execute() {
 			scrollbarChanged();
 		    }

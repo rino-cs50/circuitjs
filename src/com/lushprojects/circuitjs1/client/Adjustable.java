@@ -22,7 +22,7 @@ public class Adjustable implements Command {
     int editItem;
     
     Label label;
-    Scrollbar slider;
+    HtmlSlider slider;
     boolean settingValue;
     
     Adjustable(CircuitElm ce, int item) {
@@ -85,7 +85,7 @@ public class Adjustable implements Command {
         sim.addWidgetToVerticalPanel(label = new Label(Locale.LS(sliderText)));
         label.addStyleName("topSpace");
         int intValue = (int) ((value-minValue)*100/(maxValue-minValue));
-        sim.addWidgetToVerticalPanel(slider = new Scrollbar(Scrollbar.HORIZONTAL, intValue, 1, 0, 101, this, elm));
+        sim.addWidgetToVerticalPanel(slider = new HtmlSlider(Scrollbar.HORIZONTAL, intValue, 1, 0, 101, this, elm));
     }
 
     void setSliderValue(double value) {

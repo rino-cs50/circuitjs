@@ -29,7 +29,7 @@ class ThermistorNTCElm extends CircuitElm implements Command, MouseWheelHandler 
     double t0 = 273.15;
     double t25 = t0 + 25;
 
-    Scrollbar slider; //from Pot
+    HtmlSlider slider; //from Pot
     Label label;
     String sliderText;
 
@@ -84,7 +84,7 @@ class ThermistorNTCElm extends CircuitElm implements Command, MouseWheelHandler 
 	sim.addWidgetToVerticalPanel(label = new Label(sliderText));
 	label.addStyleName("topSpace");
 	int value = (int) (position*100);
-	sim.addWidgetToVerticalPanel(slider = new Scrollbar(Scrollbar.HORIZONTAL, value, 1, 0, 101, this, this));
+	sim.addWidgetToVerticalPanel(slider = new HtmlSlider(Scrollbar.HORIZONTAL, value, 1, 0, 101, this, this));
     }
 
     public void execute() {
