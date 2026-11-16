@@ -175,13 +175,13 @@ public class DiodeModel implements Editable, Comparable<DiodeModel> {
 	}
     }
     
-    static Vector<DiodeModel> getModelList(boolean zener) {
+    static Vector<DiodeModel> getModelList(boolean zener, DiodeModel selected) {
 	Vector<DiodeModel> vector = new Vector<DiodeModel>();
 	Iterator it = modelMap.entrySet().iterator();
 	while (it.hasNext()) {
 	    Map.Entry<String,DiodeModel> pair = (Map.Entry)it.next();
 	    DiodeModel dm = pair.getValue();
-	    if (dm.internal)
+	    if (dm.internal || (SemiconductorTextModel.isTextModel(dm.name) && dm != selected))
 		continue;
 	    if (zener && dm.breakdownVoltage == 0)
 		continue;
@@ -198,7 +198,7 @@ public class DiodeModel implements Editable, Comparable<DiodeModel> {
     
     String getDescription() {
 	if (description == null)
-	    return name;
+	    return SemiconductorTextModel.displayName(name);
 	return name + " (" + Locale.LS(description) + ")";
     }
     

@@ -23,6 +23,10 @@ package com.lushprojects.circuitjs1.client;
 	Inductor ind;
 	double inductance;
 	double initialCurrent;
+	int couplingId;
+	double couplingCoefficient;
+	boolean reverseDot;
+	InductorCoupling coupling;
 	public InductorElm(int xx, int yy) {
 	    super(xx, yy);
 	    ind = new Inductor(sim);
@@ -38,11 +42,24 @@ package com.lushprojects.circuitjs1.client;
 	    try {
 		initialCurrent = new Double(st.nextToken()).doubleValue();
 	    } catch (Exception e) {}
+	    if (st.hasMoreTokens() && st.nextToken().equals("coupled")) {
+		int id = Integer.parseInt(st.nextToken());
+		double k = Double.parseDouble(st.nextToken());
+		boolean reversed = st.nextToken().equals("1");
+		if (id > 0 && InductorCoupling.validCoefficient(k)) {
+		    couplingId = id;
+		    couplingCoefficient = k;
+		    reverseDot = reversed;
+		}
+	    }
 	    ind.setup(inductance, current, flags);
 	}
 	int getDumpType() { return 'l'; }
 	String dump() {
-	    return super.dump() + " " + inductance + " " + current + " " + initialCurrent;
+	    String state = super.dump() + " " + inductance + " " + current + " " + initialCurrent;
+	    if (couplingId > 0)
+		state += " coupled " + couplingId + " " + couplingCoefficient + " " + (reverseDot ? 1 : 0);
+	    return state;
 	}
 	void setPoints() {
 	    super.setPoints();
@@ -57,9 +74,17 @@ package com.lushprojects.circuitjs1.client;
 	    draw2Leads(g);
 	    setPowerColor(g, false);
 	    drawCoil(g, 8, lead1, lead2, v1, v2);
-	    if (sim.showValuesCheckItem.getState()) {
+	    if (referenceNumber == 0 && sim.showValuesCheckItem.getState()) {
 		String s = getShortUnitText(inductance, "H");
 		drawValues(g, s, hs);
+	    }
+	    if (couplingId > 0) {
+		Point dot = interpPoint(lead1, lead2, reverseDot ? .85 : .15, -12);
+		g.setColor(needsHighlight() ? selectColor : whiteColor);
+		g.fillOval(dot.x - 3, dot.y - 3, 6, 6);
+		Point label = interpPoint(lead1, lead2, .5, -21);
+		g.setFont(unitsFont);
+		drawCenteredText(g, "K" + couplingId, label.x, label.y, true);
 	    }
 	    doDots(g);
 	    drawPosts(g);
@@ -69,18 +94,40 @@ package com.lushprojects.circuitjs1.client;
 	    current = initialCurrent;
 	    ind.resetTo(initialCurrent);
 	}
-	void stamp() { ind.stamp(nodes[0], nodes[1]); }
+	void stamp() {
+	    if (coupling == null)
+		ind.stamp(nodes[0], nodes[1]);
+	    else if (coupling.windings.get(0) == this)
+		coupling.stamp(sim);
+	}
 	void startIteration() {
-	    ind.startIteration(volts[0]-volts[1]);
+	    if (coupling == null)
+		ind.startIteration(volts[0]-volts[1]);
+	    else if (coupling.windings.get(0) == this)
+		coupling.startIteration();
 	}
 	boolean nonLinear() { return ind.nonLinear(); }
 	void calculateCurrent() {
-	    double voltdiff = volts[0]-volts[1];
-	    current = ind.calculateCurrent(voltdiff);
+	    if (coupling == null)
+		current = ind.calculateCurrent(volts[0]-volts[1]);
 	}
 	void doStep() {
-	    double voltdiff = volts[0]-volts[1];
-	    ind.doStep(voltdiff);
+	    if (coupling == null)
+		ind.doStep(volts[0]-volts[1]);
+	    else if (coupling.windings.get(0) == this)
+		coupling.doStep(sim);
+	}
+	void stepFinished() {
+	    if (coupling != null && coupling.windings.get(0) == this)
+		coupling.finishStep();
+	}
+	void flipPosts() {
+	    super.flipPosts();
+	    if (couplingId > 0) {
+		reverseDot = !reverseDot;
+		current = -current;
+		initialCurrent = -initialCurrent;
+	    }
 	}
 	void getInfo(String arr[]) {
 	    arr[0] = "inductor";
@@ -91,13 +138,13 @@ package com.lushprojects.circuitjs1.client;
 	public EditInfo getEditInfo(int n) {
 	    if (n == 0)
 		return new EditInfo("Inductance (H)", inductance, 1e-2, 10);
-	    if (n == 1) {
+	    if (n == 1 && couplingId == 0) {
 		EditInfo ei = new EditInfo("", 0, -1, -1);
 		ei.checkbox = new Checkbox("Trapezoidal Approximation",
 					   ind.isTrapezoidal());
 		return ei;
 	    }
-            if (n == 2)
+            if (n == (couplingId == 0 ? 2 : 1))
                 return new EditInfo("Initial Current (on Reset) (A)", initialCurrent);
 	    return null;
 	}
@@ -105,13 +152,13 @@ package com.lushprojects.circuitjs1.client;
 	public void setEditValue(int n, EditInfo ei) {
 	    if (n == 0 && ei.value > 0)
 		inductance = ei.value;
-	    if (n == 1) {
+	    if (n == 1 && couplingId == 0) {
 		if (ei.checkbox.getState())
 		    flags &= ~Inductor.FLAG_BACK_EULER;
 		else
 		    flags |= Inductor.FLAG_BACK_EULER;
 	    }
-            if (n == 2)
+            if (n == (couplingId == 0 ? 2 : 1))
                 initialCurrent = ei.value;
 	    ind.setup(inductance, current, flags);
 	}

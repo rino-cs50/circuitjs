@@ -125,7 +125,7 @@ class TransistorElm extends CircuitElm {
 	    g.fillPolygon(arrowPoly);
 	    // draw base
 	    setVoltageColor(g, volts[0]);
-	    if (sim.powerCheckItem.getState())
+	    if (sim.isPowerColorEnabled())
 		g.setColor(Color.gray);
 	    drawThickLine(g, point1, base);
 	    // draw dots
@@ -396,7 +396,7 @@ class TransistorElm extends CircuitElm {
 	}
 	
 	void getInfo(String arr[]) {
-	    arr[0] = Locale.LS("transistor") + " (" + ((pnp == -1) ? "PNP" : "NPN") + ", " + model.name + ", \u03b2=" + showFormat.format(beta) + ")";
+	    arr[0] = Locale.LS("transistor") + " (" + ((pnp == -1) ? "PNP" : "NPN") + ", " + SemiconductorTextModel.displayName(model.name) + ", \u03b2=" + showFormat.format(beta) + ")";
 	    double vbc = volts[0]-volts[1];
 	    double vbe = volts[0]-volts[2];
 	    double vce = volts[1]-volts[2];
@@ -452,7 +452,7 @@ class TransistorElm extends CircuitElm {
 	    }
 	    if (n == 3) {
 		EditInfo ei =  new EditInfo("Model", 0, -1, -1);
-		models = TransistorModel.getModelList();
+		models = TransistorModel.getModelList(model);
 		ei.choice = new Choice();
 		int i;
 		for (i = 0; i != models.size(); i++) {
@@ -469,7 +469,7 @@ class TransistorElm extends CircuitElm {
 		return ei;
 	    }
 	    if (n == 5) {
-		if (model.readOnly)
+		if (model.readOnly || SemiconductorTextModel.isTextModel(modelName))
 		    return null;
 		EditInfo ei = new EditInfo("", 0, -1, -1);
 		ei.button = new Button(Locale.LS("Edit Model"));

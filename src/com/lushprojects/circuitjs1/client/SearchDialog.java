@@ -19,8 +19,7 @@
 
 package com.lushprojects.circuitjs1.client;
 
-import com.google.gwt.user.client.ui.HasHorizontalAlignment;
-import com.google.gwt.user.client.ui.HorizontalPanel;
+import com.google.gwt.user.client.ui.FlowPanel;
 import com.google.gwt.user.client.ui.TextArea;
 import com.google.gwt.user.client.ui.TextBox;
 import com.google.gwt.user.client.ui.Button;
@@ -46,6 +45,8 @@ public class SearchDialog extends Dialog {
 	TextArea textArea;
 	TextBox textBox;
 	Button okButton;
+	Button multipleButton;
+	boolean multiple;
 	ListBox listBox;
 	
 	public SearchDialog(CirSim asim) {
@@ -83,14 +84,19 @@ public class SearchDialog extends Dialog {
 		    listBox.addItem(item.getName());
 		}
 
-		HorizontalPanel hp = new HorizontalPanel();
-		hp.setWidth("100%");
-		hp.setHorizontalAlignment(HasHorizontalAlignment.ALIGN_LEFT);
-		hp.setStyleName("topSpace");
-		vp.add(hp);
-		hp.add(okButton = new Button(Locale.LS("OK")));
-		hp.setHorizontalAlignment(HasHorizontalAlignment.ALIGN_RIGHT);
-		hp.add(cancelButton = new Button(Locale.LS("Cancel")));
+		FlowPanel actions = new FlowPanel();
+		actions.setStyleName("topSpace");
+		actions.addStyleName("search-actions");
+		vp.add(actions);
+		actions.add(okButton = new Button(Locale.LS("OK")));
+		actions.add(cancelButton = new Button(Locale.LS("Cancel")));
+		actions.add(multipleButton = new Button(Locale.LS("Multiple")));
+		multipleButton.addStyleName("search-multiple");
+		multipleButton.getElement().setAttribute("aria-pressed", "false");
+		multipleButton.addClickHandler(event -> {
+		    multiple = !multiple;
+		    multipleButton.getElement().setAttribute("aria-pressed", Boolean.toString(multiple));
+		});
 		okButton.addClickHandler(new ClickHandler() {
 			public void onClick(ClickEvent event) {
 			    apply();
@@ -113,6 +119,8 @@ public class SearchDialog extends Dialog {
 		CheckboxMenuItem item = sim.mainMenuItems.get(i);
 		if (item.getName().equals(s)) {
 		    item.getScheduledCommand().execute();
+		    if (multiple)
+			sim.enableMultiplePlacement();
 		    break;
 		}
 	    }

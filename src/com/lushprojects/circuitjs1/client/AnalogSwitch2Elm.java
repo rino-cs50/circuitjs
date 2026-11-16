@@ -58,6 +58,8 @@ class AnalogSwitch2Elm extends AnalogSwitchElm {
 
 	// draw switch
 	g.setColor(lightGrayColor);
+	if (sim.isAveragePowerLossEnabled())
+	    setPowerColor(g, false);
 	int position = (open) ? 1 : 0;
 	drawThickLine(g, lead1, swpoles[position]);
 	    
@@ -77,6 +79,17 @@ class AnalogSwitch2Elm extends AnalogSwitchElm {
 	    current = (volts[0]-volts[2])/r_on;
 	else
 	    current = (volts[0]-volts[1])/r_on;
+    }
+
+    @Override
+    double getPowerLoss() {
+        int active = open ? 2 : 1;
+        double drop = volts[0] - volts[active];
+        double loss = drop * current;
+        if (needsPulldown())
+            return loss + (volts[1] * volts[1] + volts[2] * volts[2]) / r_off;
+        double offDrop = volts[0] - volts[3 - active];
+        return loss + offDrop * offDrop / r_off;
     }
 	
     void stamp() {

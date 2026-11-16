@@ -14,6 +14,78 @@
 	      referrerpolicy="no-referrer"
 	      onerror="this.onerror=null; this.remove();">
 	
+    <script>
+        (function () {
+            function menuItem(target) {
+                var item = target.closest(".gwt-MenuItem");
+                var arrow = target.closest(".subMenuIcon");
+                if (!item && arrow)
+                    item = arrow.previousElementSibling;
+                return item && item.closest(".circuit-menu, .gwt-MenuBarPopup") ? item : null;
+            }
+
+            function fitMenu(popup) {
+                var list = popup.querySelector(".gwt-MenuBar-vertical");
+                if (!list)
+                    return;
+                var viewport = window.visualViewport;
+                var top = viewport ? viewport.offsetTop : 0;
+                var bottom = top + (viewport ? viewport.height : window.innerHeight);
+                var menuBar = document.querySelector(".circuit-menu");
+                if (menuBar)
+                    top = Math.max(top, menuBar.getBoundingClientRect().bottom);
+
+                var chromeHeight = popup.getBoundingClientRect().height - list.getBoundingClientRect().height;
+                list.style.maxHeight = Math.max(0, Math.floor(bottom - top - chromeHeight - 4)) + "px";
+                list.style.overflowY = "auto";
+                list.style.overscrollBehavior = "contain";
+
+                // A submenu opens alongside its category, which may be near the bottom.
+                // Shift the popup up enough to expose its entire scroll area.
+                var bounds = popup.getBoundingClientRect();
+                var y = Math.max(top, Math.min(bounds.top, bottom - bounds.height - 4));
+                popup.style.top = (parseFloat(popup.style.top) || 0) + y - bounds.top + "px";
+            }
+
+            new MutationObserver(function (records) {
+                records.forEach(function (record) {
+                    record.addedNodes.forEach(function (node) {
+                        if (node.nodeType === 1 && node.matches(".gwt-MenuBarPopup"))
+                            fitMenu(node);
+                    });
+                });
+            }).observe(document.documentElement, {childList: true, subtree: true});
+
+            function fitOpenMenus() {
+                document.querySelectorAll(".gwt-MenuBarPopup").forEach(fitMenu);
+            }
+
+            window.addEventListener("resize", fitOpenMenus);
+            if (window.visualViewport)
+                window.visualViewport.addEventListener("resize", fitOpenMenus);
+
+
+            // GWT auto-hides a submenu on touchstart in its parent menu.
+            // Let the resulting click select the item and keep native scrolling.
+            window.addEventListener("touchstart", function (event) {
+                if (menuItem(event.target))
+                    event.stopImmediatePropagation();
+            }, {capture: true, passive: true});
+
+            // GWT's submenu arrow is in a separate table cell.
+            window.addEventListener("click", function (event) {
+                if (!event.target.closest(".subMenuIcon"))
+                    return;
+                var item = menuItem(event.target);
+                if (item) {
+                    event.stopImmediatePropagation();
+                    item.click();
+                }
+            }, true);
+        })();
+    </script>
+
+
     <!-- Titles are optional, but useful -->
     <title></title>
 
@@ -496,14 +568,95 @@
 
 	/* ===== SIDEBAR LAYOUT ===== */
 	.circuit-sidebar {
-	    background: #000000;
-	    padding: 24px;
+	    box-sizing: border-box;
+	    background: #f5f5f5;
+	    color: #161616;
+	    padding: 10px;
 	    display: flex;
 	    flex-direction: column;
 	    gap: 8px;
 	    height: 100%;
 	    overflow-y: auto;
 	    overflow-x: hidden;
+	}
+
+	.controls-title {
+	    font-size: 14px;
+	    padding: 2px 4px 7px;
+	    border-bottom: 1px solid #cbd3dc;
+	}
+
+	.controls-section {
+	    flex: none;
+	    display: flex;
+	    flex-direction: column;
+	    gap: 7px;
+	    padding: 8px;
+	    background: #fff;
+	    border: 1px solid #cbd3dc;
+	    border-radius: 6px;
+	    color: #161616;
+	    font-size: 13px;
+	}
+
+	.controls-section-title {
+	    font-weight: 600;
+	}
+
+	.controls-circuit-name {
+	    overflow-wrap: anywhere;
+	}
+
+	.controls-section .button-row {
+	    margin: 0;
+	}
+
+	.controls-section .gwt-Button {
+	    flex: 1;
+	    min-height: 32px;
+	    font: inherit;
+	}
+
+	.controls-section .button-row .gwt-Button {
+	    display: inline-flex;
+	    align-items: center;
+	    justify-content: center;
+	    gap: 6px;
+	}
+
+	.controls-section .gwt-CheckBox {
+	    display: flex;
+	    align-items: center;
+	    min-height: 32px;
+	    gap: 5px;
+	}
+
+	.controls-section input[type="checkbox"],
+	.controls-section input[type="range"] {
+	    accent-color: #087aff;
+	}
+
+	.controls-section .modern-slider {
+	    -webkit-appearance: auto;
+	    appearance: auto;
+	    background: transparent;
+	    width: 100%;
+	    margin: 0;
+	    min-height: 28px;
+	}
+
+	.controls-section .modern-slider:focus-visible {
+	    outline: 2px solid #087aff;
+	}
+
+	.controls-section .modern-slider::-webkit-slider-track,
+	.controls-section .modern-slider::-webkit-slider-thumb {
+	    all: revert;
+	}
+
+	.controls-section .modern-slider::-moz-range-track,
+	.controls-section .modern-slider::-moz-range-thumb {
+	    all: revert;
 	}
 
 	/* Custom scrollbar for sidebar */
@@ -561,29 +714,526 @@
 	    background: #000000 !important;
 	}
 
-	/* ===== MOBILE MENU BUTTON ===== */
+	.circuit-toolbar {
+	    display: flex;
+	    align-items: center;
+	    height: 100%;
+	    padding: 0 4px;
+	    background: #f5f7fa;
+	    border-bottom: 1px solid #ccd5e0;
+	    overflow-x: auto;
+	    overflow-y: hidden;
+	    overscroll-behavior-x: contain;
+	}
+
+	.circuit-toolbar-action {
+	    flex: 0 0 36px;
+	    height: 36px;
+	    display: grid;
+	    place-items: center;
+	    font-size: 24px;
+	    color: #263445;
+	    border-radius: 5px;
+	    cursor: pointer;
+	    touch-action: manipulation;
+	}
+
+	.circuit-toolbar-toggle {
+	    border: 0;
+	    padding: 0;
+	    background: transparent;
+	}
+
+	.circuit-toolbar-active {
+	    color: #115ba1;
+	    background: #d9e9fa;
+	}
+
+	@media (hover: hover) {
+	    .circuit-toolbar-action:hover {
+	        color: #115ba1;
+	    }
+	}
+
+	.circuit-canvas {
+	    position: relative;
+	    height: 100%;
+	}
+
+    .gwt-DialogBox {
+        z-index: 30;
+    }
+
+    .gwt-MenuBarPopup {
+        z-index: 20;
+    }
+
+	.circuit-scope-controls {
+	    position: absolute;
+	    top: 0;
+	    z-index: 3;
+	    left: 0;
+	    right: 0;
+	    height: 44px;
+	    padding: 3px 6px;
+	    box-sizing: border-box;
+	    display: flex;
+	    align-items: center;
+	    gap: 4px;
+	    background: #141c27;
+	    border-top: 1px solid #52647b;
+	    border-bottom: 1px solid #344357;
+	    color: #f4f6f9;
+	}
+
+	.circuit-scope-controls button {
+	    min-height: 36px;
+	    min-width: 40px;
+	    padding: 0 8px;
+	    background: #202c3c;
+	    color: inherit;
+	    border: 1px solid #3b4c62;
+	    border-radius: 4px;
+	    font: inherit;
+	    touch-action: manipulation;
+	}
+
+	.circuit-scope-controls button:disabled {
+	    opacity: .65;
+	}
+
+	.circuit-scope-controls .circuit-scope-trace {
+	    flex: 1 1 0;
+	    min-width: 0;
+	    text-align: left;
+	    overflow: hidden;
+	    text-overflow: ellipsis;
+	    white-space: nowrap;
+	}
+
+    .circuit-scope-dismiss {
+        position: absolute;
+        inset: 44px 0 0;
+        z-index: 4;
+        background: #080d168c;
+    }
+
+    .probe-actions, .probe-channel {
+        display: flex;
+        gap: 3px;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    .circuit-scope-controls .probe-actions button {
+        min-width: 33px;
+        padding: 0 4px;
+    }
+
+    .circuit-scope-controls .probe-actions button[aria-pressed="true"] {
+        background: #3b526c;
+        border-color: #9bb6d5;
+    }
+
+    .probe-legend, .probe-measurements {
+        position: absolute;
+        box-sizing: border-box;
+        color: #f4f6f9;
+        background: #141c27;
+    }
+
+    .probe-sheet {
+        box-sizing: border-box;
+        width: min(360px, 78vw);
+        max-height: 75dvh;
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        padding: 3px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 6px;
+    }
+
+    .probe-sheet-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .probe-sheet-actions button:last-child {
+        margin-left: auto;
+    }
+
+    .probe-sheet button {
+        min-height: 32px;
+        touch-action: manipulation;
+    }
+
+    .probe-legend button {
+        color: inherit;
+        background: #202c3c;
+        border: 1px solid #475b73;
+        border-radius: 5px;
+        min-height: 36px;
+        padding: 2px 8px;
+        font: inherit;
+        touch-action: manipulation;
+    }
+
+    .probe-sheet input {
+        box-sizing: border-box;
+        width: 100%;
+        font-size: 16px;
+    }
+
+    .probe-signals {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        max-height: 92px;
+        overflow: auto;
+    }
+
+    .probe-keypad {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 4px;
+    }
+
+    .probe-keypad button {
+        min-width: 0;
+        padding-inline: 2px;
+        font-size: 13px;
+    }
+
+    .probe-scientific {
+        max-height: 166px;
+        overflow-y: auto;
+    }
+
+    .probe-trace-menu {
+        position: absolute;
+        z-index: 5;
+        top: 82px;
+        left: 6px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        padding: 8px;
+        color: #f4f6f9;
+        background: #141c27;
+        border: 1px solid #52647b;
+        border-radius: 8px;
+        max-width: calc(100% - 30px);
+        max-height: calc(100% - 100px);
+        overflow: auto;
+    }
+
+    .probe-trace-menu button {
+        min-height: 36px;
+        color: inherit;
+        background: #202c3c;
+        border: 1px solid #475b73;
+        border-radius: 5px;
+        padding: 2px 8px;
+        font: inherit;
+    }
+
+    .probe-channel button {
+        touch-action: pan-x;
+        user-select: none;
+        -webkit-touch-callout: none;
+    }
+
+    .probe-sheet [role="status"] {
+        color: #a12617;
+    }
+
+    .probe-sheet [role="status"]:empty {
+        display: none;
+    }
+
+    .probe-legend {
+        top: 44px;
+        left: 0;
+        right: 0;
+        height: 37px;
+        z-index: 2;
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 2px 6px;
+        scrollbar-width: thin;
+    }
+
+    .probe-legend button {
+        min-height: 29px;
+        white-space: nowrap;
+        font-size: 12px;
+    }
+
+    .probe-legend.has-highlight button[aria-pressed="false"],
+    .probe-legend button.trace-hidden,
+    .probe-legend button:disabled {
+        opacity: .55;
+    }
+
+    .probe-legend button.trace-hidden {
+        text-decoration: line-through;
+    }
+
+    .probe-legend button[aria-pressed="true"] {
+        border-color: currentColor;
+    }
+
+    .probe-measurements {
+        z-index: 2;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        border-top: 1px solid #344357;
+        font-size: 10px;
+    }
+
+    .probe-properties {
+        width: min(360px, 82vw);
+        padding: 8px;
+    }
+
+    .probe-properties-body {
+        display: grid;
+        gap: 8px;
+        max-height: 70vh;
+        overflow: auto;
+        overscroll-behavior: contain;
+    }
+
+    .probe-properties > button {
+        margin-top: 8px;
+        min-height: 34px;
+        width: 100%;
+    }
+
+    .probe-component-controls {
+        grid-column: 1 / -1;
+        overflow-x: auto;
+        min-width: 0;
+    }
+
+    .probe-settings-section {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+        gap: 4px 8px;
+        padding: 8px;
+        border: 1px solid #c5ccd4;
+        border-radius: 5px;
+    }
+
+    .probe-settings-title {
+        grid-column: 1 / -1;
+        font-weight: 700;
+        margin-bottom: 2px;
+    }
+
+    .probe-settings-section label {
+        display: inline-block;
+        padding: 4px 0;
+    }
+
+    .probe-trigger-handle {
+        position: absolute;
+        z-index: 2;
+        width: 30px;
+        height: 28px;
+        padding: 0;
+        border: 1px solid #ffca63;
+        border-radius: 4px;
+        background: #382e21;
+        color: #ffca63;
+        font-weight: bold;
+        cursor: ns-resize;
+        touch-action: none;
+    }
+
+    .probe-trigger-row {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 10px;
+    }
+
+    .probe-trigger-row input[type="text"] {
+        width: 7em;
+        max-width: 100%;
+    }
+
+    .probe-time-scale {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 36px 1fr 36px;
+        align-items: center;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .probe-time-scale button {
+        min-height: 32px;
+    }
+
+    .probe-measurement-tables {
+        display: grid;
+        gap: 4px;
+        padding: 0 4px 4px;
+        min-height: 0;
+        overflow: auto;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
+    }
+
+    .probe-measurement-table {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+        background: #192331;
+        font-size: inherit;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .probe-measurement-table td {
+        box-sizing: border-box;
+        height: 17px;
+        padding: 0 4px;
+        border: 1px solid #344357;
+        font-size: inherit;
+        line-height: 16px;
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .probe-measurement-table td:first-child {
+        width: 76px;
+        color: #aebdd0;
+        text-align: left;
+    }
+
+    .probe-measurement-table tr:nth-child(odd) {
+        background: #16202d;
+    }
+
+    .probe-measurement-table .probe-measurement-table-header {
+        background: #222f40;
+        font-weight: 700;
+    }
+
+    .probe-measurement-trace {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .probe-measurement-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex: 0 0 19px;
+        gap: 8px;
+        padding: 0 4px;
+        font-weight: 700;
+    }
+
+    .probe-measurement-heading > div:last-child {
+        color: #aebdd0;
+        font-weight: 400;
+    }
+
+	.circuit-canvas-mode {
+	    position: absolute;
+	    top: 8px;
+	    left: 50%;
+	    transform: translateX(-50%);
+	    max-width: calc(100% - 112px);
+	    padding: 4px 10px;
+	    border-radius: 5px;
+	    background: #17212e;
+	    color: #f4f6f9;
+	    font-size: 13px;
+	    text-align: center;
+	    overflow-wrap: anywhere;
+	    pointer-events: none;
+	}
+
+	.circuit-simulation-stop {
+	    position: absolute;
+	    bottom: 8px;
+	    left: 8px;
+	    right: 8px;
+	    box-sizing: border-box;
+	    width: fit-content;
+	    max-width: calc(100% - 16px);
+	    margin: 0 auto;
+	    padding: 6px 10px;
+	    border: 1px solid #ffc370;
+	    border-radius: 5px;
+	    background: #322417;
+	    color: #ffebcf;
+	    font-size: 13px;
+	    overflow-wrap: anywhere;
+	    pointer-events: none;
+	}
+
 	.mobile-menu-button {
 	    display: none;
 	    position: fixed;
-	    top: 35px;
-	    right: 10px;
-	    width: 44px;
+	    top: 0;
+	    right: 0;
+	    width: 48px;
 	    height: 44px;
-	    background: #374151 !important;
+	    background: #26374a !important;
 	    color: white !important;
-	    border: 1px solid #4b5563 !important;
-	    border-radius: 8px;
-	    font-size: 18px;
+	    border: 0 !important;
+	    border-radius: 0;
+	    font-size: 22px;
 	    z-index: 1001;
 	    cursor: pointer;
-	    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-	    transition: all 0.2s;
 	    padding: 0 !important;
-	    
-	    /* Center the icon */
-	    display: none;
 	    align-items: center;
 	    justify-content: center;
+	}
+
+	.component-tools-button {
+	    position: absolute;
+	    right: 8px;
+	    width: 44px;
+	    height: 44px;
+	    padding: 0;
+	    border: 1px solid #52647b;
+	    border-radius: 8px;
+	    background: #26374a;
+	    color: #fff;
+	    font-size: 22px;
+	    z-index: 10;
+	    touch-action: manipulation;
+	}
+
+	.component-tools-popup {
+	    max-width: calc(100vw - 8px);
+	    max-height: calc(100vh - 8px);
+	    overflow: auto;
+	    overscroll-behavior: contain;
+	    z-index: 11;
+	}
+
+	.component-tools-popup .gwt-MenuItem {
+	    white-space: normal;
+	    padding: 8px 12px;
+	}
+
+	@media (pointer: coarse) {
+	    .component-tools-popup .gwt-MenuItem {
+	        height: 40px;
+	    }
 	}
 
 	.mobile-menu-button:hover {
@@ -663,35 +1313,47 @@
 	        position: relative;
 	    }
 	    
-	    /* Show mobile menu button */
-	    .mobile-menu-button {
-	        display: flex !important; /* Changed from block to flex for centering */
+	    .has-simulation-controls .circuit-menu {
+	        padding-right: 48px;
 	    }
-	    
-	    /* Sidebar as overlay from the right - USE TRANSFORM */
+
+	    .has-simulation-controls .mobile-menu-button {
+	        display: flex;
+	        height: 24px;
+	    }
+
+	    .circuit-toolbar-action {
+	        flex-basis: 44px;
+	        height: 44px;
+	    }
+
+	    .circuit-toolbar::-webkit-scrollbar {
+	        height: 4px;
+	    }
+
+	    .circuit-toolbar::-webkit-scrollbar-thumb {
+	        background: #8195ac;
+	        border-radius: 2px;
+	    }
+
 	    .circuit-sidebar {
 	        position: fixed !important;
-	        right: 0 !important; /* Keep at right edge */
-			top: 80px;  /* Below menu bar (30px) + button (44px) + spacing */
-			height: calc(100vh - 80px);;
-	        width: 80% !important;
-	        max-width: 300px !important;
+	        inset: 24px 0 0 auto !important;
+	        width: min(320px, 88vw) !important;
+	        height: auto !important;
 	        z-index: 999;
-	        box-shadow: -2px 0 10px rgba(0,0,0,0.5);
-	        padding: 12px;
-	        gap: 8px;
-	        
-	        /* Use transform to hide/show instead of right property */
-	        transform: translateX(100%); /* Hidden off-screen to the RIGHT */
-	        transition: transform 0.3s ease;
-	        will-change: transform;
+	        padding: 10px;
+	        box-shadow: -2px 0 10px rgba(0, 0, 0, .5);
+	        transform: translateX(100%);
+	        visibility: hidden;
+	        transition: transform .2s ease, visibility .2s;
 	    }
-	    
-	    /* Show sidebar when visible class is added */
+
 	    .circuit-sidebar.visible {
-	        transform: translateX(0); /* Slide to visible position */
+	        transform: translateX(0);
+	        visibility: visible;
 	    }
-	    
+
 	    .topButton,
 	    .topButton-play,
 	    .topButton-pause,
@@ -786,6 +1448,7 @@
 	                if (!isClickInside && sidebar.classList.contains('visible')) {
 	                    sidebar.classList.remove('visible');
 	                    document.body.classList.remove('sidebar-open');
+                    menuBtn.setAttribute('aria-expanded', 'false');
 	                }
 	            }
 	        }

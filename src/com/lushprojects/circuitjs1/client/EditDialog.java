@@ -20,18 +20,20 @@
 package com.lushprojects.circuitjs1.client;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import com.google.gwt.user.client.ui.HTML;
 import com.google.gwt.user.client.ui.Button;
 import com.google.gwt.user.client.ui.VerticalPanel;
 import com.lushprojects.circuitjs1.client.util.Locale;
 import com.google.gwt.user.client.ui.HorizontalPanel;
+import com.google.gwt.user.client.ui.SimplePanel;
 import com.google.gwt.event.dom.client.ClickHandler;
 import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.user.client.ui.Label;
 import com.google.gwt.user.client.ui.TextBox;
 import com.google.gwt.i18n.client.NumberFormat;
 import com.google.gwt.event.dom.client.ChangeHandler;
-import com.google.gwt.dom.client.Style.Unit;
 import com.google.gwt.event.dom.client.ChangeEvent;
 import com.google.gwt.event.logical.shared.ValueChangeHandler;
 import com.google.gwt.event.logical.shared.ValueChangeEvent;
@@ -47,11 +49,13 @@ class EditDialog extends Dialog {
 	Editable elm;
 	CirSim cframe;
 	Button applyButton, okButton, cancelButton;
-	EditInfo einfos[];
-	int einfocount;
+	private final List<EditInfo> einfos = new ArrayList<>();
 	final int barmax = 1000;
 	VerticalPanel mainPanel;
 	HorizontalPanel bottomButtonPanel;
+	private Choice modelChoice;
+	private int firstSavedModel;
+	private List<SemiconductorTextModel> savedModels;
 	static NumberFormat noCommaFormat = NumberFormat.getFormat("####.##########");
 
 	EditDialog(Editable ce, CirSim f) {
@@ -63,7 +67,6 @@ class EditDialog extends Dialog {
 //		setLayout(new EditDialogLayout());
 		mainPanel=new VerticalPanel();
 		setWidget(mainPanel);
-		einfos = new EditInfo[10];
 //		noCommaFormat = DecimalFormat.getInstance();
 //		noCommaFormat.setMaximumFractionDigits(10);
 //		noCommaFormat.setGroupingUsed(false);
@@ -98,17 +101,31 @@ class EditDialog extends Dialog {
 	}
 	
 	void buildDialog() {
+		einfos.clear();
+		modelChoice = null;
+		savedModels = null;
+		CircuitElm semiconductor = SemiconductorTextModel.typeFor(elm) == null ? null : (CircuitElm) elm;
+		List<SemiconductorTextModel> library = semiconductor == null ? null : SemiconductorTextModel.savedFor(semiconductor);
 		int i;
 		HorizontalPanel hp = new HorizontalPanel();
 		VerticalPanel vp = new VerticalPanel();
-		mainPanel.insert(hp, mainPanel.getWidgetIndex(bottomButtonPanel));
+		int fieldsIndex = mainPanel.getWidgetIndex(bottomButtonPanel);
+		if (elm instanceof EditOptions) {
+		    hp.addStyleName("circuit-options-columns");
+		    SimplePanel scroll = new SimplePanel();
+		    scroll.addStyleName("circuit-options-fields");
+		    scroll.setWidget(hp);
+		    mainPanel.insert(scroll, fieldsIndex);
+		} else {
+		    mainPanel.insert(hp, fieldsIndex);
+		}
 		hp.add(vp);
 		for (i = 0; ; i++) {
 			Label l = null;
-			einfos[i] = elm.getEditInfo(i);
-			if (einfos[i] == null)
+			EditInfo ei = elm.getEditInfo(i);
+			if (ei == null)
 				break;
-			final EditInfo ei = einfos[i];
+			einfos.add(ei);
 			String name = Locale.LS(ei.name);
 			if (ei.name.startsWith("<"))
 			    vp.add(l = new HTML(name));
@@ -117,6 +134,8 @@ class EditDialog extends Dialog {
 			if (i!=0 && l != null)
 				l.setStyleName("topSpace");
 			if (ei.choice != null) {
+				if (semiconductor != null && "Model".equals(ei.name))
+				    addSavedModels(semiconductor, ei.choice, library);
 				vp.add(ei.choice);
 				ei.choice.addChangeHandler( new ChangeHandler() {
 					public void onChange(ChangeEvent e){
@@ -167,10 +186,72 @@ class EditDialog extends Dialog {
 			    // start a new column
 			    vp = new VerticalPanel();
 			    hp.add(vp);
-			    vp.getElement().getStyle().setPaddingLeft(10, Unit.PX);
+			    vp.addStyleName("circuit-edit-next-column");
 			}
 		}
-		einfocount = i;
+		if (semiconductor != null)
+		    addTextModelControls(semiconductor, library);
+	}
+
+	private void addSavedModels(CircuitElm component, Choice choice, List<SemiconductorTextModel> library) {
+	    modelChoice = choice;
+	    firstSavedModel = choice.getItemCount();
+	    String label = Locale.LS("Model");
+	    choice.getElement().setAttribute("aria-label", label);
+	    choice.getElement().getStyle().setProperty("maxWidth", "80vw");
+	    savedModels = new java.util.ArrayList<>();
+	    for (SemiconductorTextModel model : library) {
+		if (model.isLoadedOn(component))
+		    continue;
+		savedModels.add(model);
+		choice.addItem(model.name + (model.isApproximation() ? " (" + Locale.LS("approx.") + ")" : ""));
+	    }
+	}
+
+	private void addTextModelControls(CircuitElm component, List<SemiconductorTextModel> library) {
+	    VerticalPanel controls = new VerticalPanel();
+	    controls.setStyleName("topSpace");
+	    mainPanel.insert(controls, mainPanel.getWidgetIndex(bottomButtonPanel));
+	    SemiconductorTextModel loaded = SemiconductorTextModel.loadedOn(component, library);
+	    if (component instanceof MosfetElm && (!library.isEmpty() || loaded != null)) {
+		controls.add(new Label(Locale.LS("Model")));
+		Choice choice = new Choice();
+		choice.addItem(loaded == null ? Locale.LS("Custom values") : loaded.name);
+		addSavedModels(component, choice, library);
+		choice.addChangeHandler(event -> selectSavedModel());
+		controls.add(choice);
+	    }
+	    if (loaded != null)
+		addTextModelButton(controls, component, loaded, "Edit Model");
+	    addTextModelButton(controls, component, null, "Create Model from Text");
+	}
+
+	private void addTextModelButton(VerticalPanel controls, CircuitElm component,
+		SemiconductorTextModel loaded, String label) {
+	    Button button = new Button(Locale.LS(label));
+	    button.addClickHandler(event -> {
+		SemiconductorTextModelDialog dialog = new SemiconductorTextModelDialog(component, this, loaded);
+		CirSim.dialogShowing = dialog;
+		dialog.center();
+	    });
+	    controls.add(button);
+	}
+
+	private boolean selectedSavedModel() {
+	    return modelChoice != null && modelChoice.getSelectedIndex() >= firstSavedModel;
+	}
+
+	private void selectSavedModel() {
+	    if (selectedSavedModel())
+		applyTextModel((CircuitElm) elm, savedModels.get(modelChoice.getSelectedIndex() - firstSavedModel));
+	}
+
+	void applyTextModel(CircuitElm component, SemiconductorTextModel model) {
+	    apply();
+	    model.applyTo(component);
+	    cframe.needAnalyze();
+	    cframe.writeRecoveryToStorage();
+	    resetDialog();
 	}
 
 	static final double ROOT2 = 1.41421356237309504880;
@@ -253,15 +334,15 @@ class EditDialog extends Dialog {
 
 	void apply() {
 		int i;
-		for (i = 0; i != einfocount; i++) {
-			EditInfo ei = einfos[i];
+		for (i = 0; i < einfos.size(); i++) {
+			EditInfo ei = einfos.get(i);
 			if (ei.textf!=null && ei.text==null) {
 				try {
 					double d = parseUnits(ei);
 					ei.value = d;
 				} catch (Exception ex) { /* ignored */ }
 			}
-			if (ei.button != null)
+			if (ei.button != null || (ei.choice != null && ei.choice == modelChoice && selectedSavedModel()))
 			    continue;
 			elm.setEditValue(i, ei);
 			
@@ -277,11 +358,14 @@ class EditDialog extends Dialog {
 
 	public void itemStateChanged(GwtEvent e) {
 	    Object src = e.getSource();
-	    int i;
+	    if (src == modelChoice && selectedSavedModel()) {
+		selectSavedModel();
+		return;
+	    }
 	    boolean changed = false;
 	    boolean applied = false;
-	    for (i = 0; i != einfocount; i++) {
-		EditInfo ei = einfos[i];
+	    for (int i = 0; i < einfos.size(); i++) {
+		EditInfo ei = einfos.get(i);
 		if (ei.choice == src || ei.checkbox == src || ei.button == src) {
 		    
 		    // if we're pressing a button, make sure to apply changes first

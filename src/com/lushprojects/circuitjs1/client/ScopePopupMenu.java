@@ -51,8 +51,13 @@ public class ScopePopupMenu {
 	 m.addItem(propertiesItem = new CheckboxAlignedMenuItem(Locale.LS("Properties..."), new MyCommand("scopepop", "properties")));
     }
     
-    void doScopePopupChecks( boolean floating, boolean canstack, boolean cancombine, boolean canunstack, Scope s) {
+    void setMaxScaleChecked(boolean checked) {
+        maxScaleItem.setState(checked);
+    }
+
+    void doScopePopupChecks( boolean floating, boolean canstack, boolean cancombine, boolean canunstack, Scope s, int plot) {
 	maxScaleItem.setState(s.maxScale);
+        removePlotItem.setEnabled(plot >= 0 && plot < s.visiblePlots.size());
 	stackItem.setVisible(!floating);
 	stackItem.setEnabled(canstack);
 	unstackItem.setVisible(!floating);

@@ -111,13 +111,13 @@ public class TransistorModel implements Editable, Comparable<TransistorModel> {
 	}
     }
 
-    static Vector<TransistorModel> getModelList() {
+    static Vector<TransistorModel> getModelList(TransistorModel selected) {
 	Vector<TransistorModel> vector = new Vector<TransistorModel>();
 	Iterator it = modelMap.entrySet().iterator();
 	while (it.hasNext()) {
 	    Map.Entry<String,TransistorModel> pair = (Map.Entry)it.next();
 	    TransistorModel tm = pair.getValue();
-	    if (tm.internal)
+	    if (tm.internal || (SemiconductorTextModel.isTextModel(tm.name) && tm != selected))
 		continue;
 	    if (!vector.contains(tm))
 		vector.add(tm);
@@ -132,7 +132,7 @@ public class TransistorModel implements Editable, Comparable<TransistorModel> {
 
     String getDescription() {
 	if (description == null || description.equals(name))
-	    return name;
+	    return SemiconductorTextModel.displayName(name);
 	return name + " (" + Locale.LS(description) + ")";
     }
 

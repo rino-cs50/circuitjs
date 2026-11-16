@@ -1,13 +1,8 @@
 package com.lushprojects.circuitjs1.client;
 
-import com.google.gwt.core.client.EntryPoint;
-import com.google.gwt.core.client.Scheduler;
-import com.google.gwt.dom.client.DivElement;
-import com.google.gwt.dom.client.Document;
 import com.google.gwt.dom.client.Style;
 import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.event.dom.client.ClickHandler;
-import com.google.gwt.event.dom.client.DomEvent;
 import com.google.gwt.event.dom.client.MouseOutEvent;
 import com.google.gwt.event.dom.client.MouseOverEvent;
 import com.google.gwt.user.client.Window;
@@ -16,27 +11,19 @@ import com.lushprojects.circuitjs1.client.util.Locale;
 
 import java.util.HashMap;
 
-public class Toolbar extends HorizontalPanel {
+public class Toolbar extends FlowPanel {
 
-    private Label modeLabel;
     private HashMap<String, Label> highlightableButtons = new HashMap<>();
     private Label activeButton;  // Currently active button
 
     Label resistorButton;
 
     public Toolbar() {
-        // Set the overall style of the toolbar
-	Style style = getElement().getStyle();
-        style.setPadding(2, Style.Unit.PX);
-        style.setBackgroundColor("#f8f8f8");
-        style.setBorderWidth(1, Style.Unit.PX);
-        style.setBorderStyle(Style.BorderStyle.SOLID);
-        style.setBorderColor("#ccc");
-        style.setDisplay(Style.Display.FLEX);
-	setVerticalAlignment(ALIGN_MIDDLE);
+        setStyleName("circuit-toolbar");
 
 	add(createIconButton("ccw", "Undo", new MyCommand("edit", "undo")));
 	add(createIconButton("cw",  "Redo", new MyCommand("edit", "redo")));
+	add(createTouchSelectionButton());
 	add(createIconButton("scissors", "Cut", new MyCommand("edit", "cut")));
 	add(createIconButton("copy", "Copy", new MyCommand("edit", "copy")));
 	add(createIconButton("paste", "Paste", new MyCommand("edit", "paste")));
@@ -75,18 +62,28 @@ public class Toolbar extends HorizontalPanel {
 			      orIcon, "OrGateElm", norIcon, "NorGateElm", xorIcon, "XorGateElm" };
 	add(createButtonSet(gateInfo));
 
-        // Spacer to push the mode label to the right
-        HorizontalPanel spacer = new HorizontalPanel();
-        //spacer.style.setFlexGrow(1); // Fill remaining space
-        add(spacer);
-
-        // Create and add the mode label on the right
-        modeLabel = new Label("");
-        styleModeLabel(modeLabel);
-        add(modeLabel);
     }
 
-    public void setModeLabel(String text) { modeLabel.setText(Locale.LS("Mode: ") + text); }
+    private Button createTouchSelectionButton() {
+        String title = Locale.LS("Touch Selection");
+        Button button = new Button("<svg width='24' height='24' viewBox='0 0 24 24' aria-hidden='true'>"
+                + "<rect x='4' y='4' width='16' height='16' rx='2' fill='none' stroke='currentColor' "
+                + "stroke-width='2' stroke-dasharray='3 2'/></svg>");
+        button.setStyleName("circuit-toolbar-action");
+        button.addStyleName("circuit-toolbar-toggle");
+        button.setTitle(title);
+        button.getElement().setAttribute("aria-label", title);
+        button.getElement().setAttribute("aria-pressed", "false");
+        button.addClickHandler(event -> {
+            boolean enabled = !button.getElement().getAttribute("aria-pressed").equals("true");
+            if (enabled)
+                new MyCommand("main", "Select").execute();
+            CirSim.theSim.setTouchSelectionEnabled(enabled);
+            button.setStyleName("circuit-toolbar-active", enabled);
+            button.getElement().setAttribute("aria-pressed", Boolean.toString(enabled));
+        });
+        return button;
+    }
 
     private Label createIconButton(String icon, String cls) {
 	CirSim sim = CirSim.theSim;
@@ -103,30 +100,15 @@ public class Toolbar extends HorizontalPanel {
 	    iconLabel.getElement().addClassName("cirjsicon-" + iconClass);
         iconLabel.setTitle(Locale.LS(tooltip));
 
-        // Style the icon button
-	Style style = iconLabel.getElement().getStyle();
-        style.setFontSize(24, Style.Unit.PX);
-        style.setColor("#333");
-        style.setPadding(1, Style.Unit.PX);
-        style.setMarginRight(5, Style.Unit.PX);
-        style.setCursor(Style.Cursor.POINTER);
-	if (iconClass.startsWith("<svg"))
-	    style.setPaddingTop(5, Style.Unit.PX);
-
-        // Add hover effect for the button
-        iconLabel.addMouseOverHandler(event -> iconLabel.getElement().getStyle().setColor("#007bff"));
-        iconLabel.addMouseOutHandler(event -> iconLabel.getElement().getStyle().setColor("#333"));
+        iconLabel.addStyleName("circuit-toolbar-action");
 
         // Add a click handler to perform the action
         iconLabel.addClickHandler(new ClickHandler() {
             @Override
             public void onClick(ClickEvent event) {
-		// un-highlight
-        	iconLabel.getElement().getStyle().setColor("#333");
-		if (iconLabel == activeButton) {
+		if (iconLabel == activeButton)
 		    new MyCommand("main", "Select").execute();
-		    activeButton = null;
-		} else
+		else
 		    command.execute();
             }
         });
@@ -204,7 +186,8 @@ public class Toolbar extends HorizontalPanel {
 	    paletteContainer.setVisible(true);
 
 	    // Position the palette relative to the icon label
-	    int leftOffset = iconLabel.getAbsoluteLeft() - 12;
+	    int leftOffset = Math.max(0, Math.min(iconLabel.getAbsoluteLeft() - 12,
+                    Window.getClientWidth() - paletteContainer.getOffsetWidth()));
 	    int topOffset = iconLabel.getAbsoluteTop() + iconLabel.getOffsetHeight() - 2;
 	    paletteContainer.getElement().getStyle().setLeft(leftOffset, Style.Unit.PX);
 	    paletteContainer.getElement().getStyle().setTop(topOffset, Style.Unit.PX);
@@ -220,28 +203,12 @@ public class Toolbar extends HorizontalPanel {
 	return iconLabel;
     }
 
-    private void styleModeLabel(Label label) {
-	Style style = label.getElement().getStyle();
-        style.setFontSize(16, Style.Unit.PX);
-        style.setColor("#333");
-        style.setPaddingRight(10, Style.Unit.PX);
-	style.setProperty("whiteSpace", "nowrap");
-    }
-
     public void highlightButton(String key) {
-        // Deactivate the currently active button
-        if (activeButton != null) {
-            activeButton.getElement().getStyle().setColor("#333"); // Reset color
-            activeButton.getElement().getStyle().setBackgroundColor(null);
-        }
-
-        // Activate the new button
-        Label newActiveButton = highlightableButtons.get(key);
-        if (newActiveButton != null) {
-            newActiveButton.getElement().getStyle().setColor("#007bff"); // Active color
-            newActiveButton.getElement().getStyle().setBackgroundColor("#e6f7ff");
-            activeButton = newActiveButton;
-        }
+        if (activeButton != null)
+            activeButton.removeStyleName("circuit-toolbar-active");
+        activeButton = highlightableButtons.get(key);
+        if (activeButton != null)
+            activeButton.addStyleName("circuit-toolbar-active");
     }
 
     public void setEuroResistors(boolean euro) {

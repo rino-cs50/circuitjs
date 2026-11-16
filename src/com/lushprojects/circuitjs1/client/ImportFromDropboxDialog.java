@@ -30,8 +30,11 @@ public class ImportFromDropboxDialog extends Dialog {
 	}
 	
 	static public void doLoadCallback(String s) {
+        if (sim.importMobileCircuit(s, null, false))
+            return;
 		sim.pushUndo();
 		sim.readCircuit(s);
+		sim.detachMobileProject();
 		sim.allowSave(false);
 	}
 	

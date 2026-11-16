@@ -134,7 +134,12 @@ abstract class ChipElm extends CircuitElm {
 			tx = p.textloc.x+(cspc-5)-sw;
 		    else
 			tx = p.textloc.x-sw/2;
-		    g.drawString(p.text, tx, p.textloc.y+asc/3);
+		    int baseline = p.textloc.y + asc/3;
+		    p.labelLeft = tx;
+		    p.labelRight = tx + sw;
+		    p.labelTop = baseline - asc;
+		    p.labelBottom = baseline + asc/4;
+		    g.drawString(p.text, tx, baseline);
 		    if (p.lineOver) {
 			int ya = p.textloc.y-asc+asc/3;
 			g.drawLine(tx, ya, tx+sw, ya);
@@ -208,7 +213,7 @@ abstract class ChipElm extends CircuitElm {
 	    int yr = y0-cspc;
 	    double xd = (xp-xr)/(double)cspc2 - .5;
 	    double yd = (yp-yr)/(double)cspc2 - .5;
-	    if (xd < .25 && yd > 0 && yd < sizeY-1) {
+	    if (xd < .25 && yd >= -.5 && yd < sizeY-.5) {
 		pos[0] = (int) Math.max(Math.round(yd), 0);
 		pos[1] = SIDE_W;
 	    } else if (xd > sizeX-.75) {
@@ -481,6 +486,7 @@ abstract class ChipElm extends CircuitElm {
 	    }
 	    Point post, stub;
 	    Point textloc;
+	    int labelLeft, labelTop, labelRight, labelBottom;
 	    int pos, side, side0, voltSource, bubbleX, bubbleY;
 	    String text;
 	    boolean lineOver, bubble, clock, output, value, state, selected;

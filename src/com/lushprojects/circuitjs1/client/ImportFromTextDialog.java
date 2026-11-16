@@ -27,13 +27,13 @@ import com.google.gwt.user.client.ui.HorizontalPanel;
 import com.google.gwt.event.dom.client.ClickHandler;
 import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.user.client.ui.Label;
+import com.google.gwt.user.client.ui.ListBox;
 
 public class ImportFromTextDialog extends Dialog {
 	
 VerticalPanel vp;
 HorizontalPanel hp;
 CirSim sim;
-// RichTextArea textBox;
 TextArea textArea;
 	
 	public ImportFromTextDialog( CirSim asim) {
@@ -45,24 +45,63 @@ TextArea textArea;
 		vp=new VerticalPanel();
 		setWidget(vp);
 		setText(Locale.LS("Import from Text"));
-		vp.add(new Label(Locale.LS("Paste the text file for your circuit here...")));
-//		vp.add(textBox = new RichTextArea());
-		vp.add(textArea = new TextArea());
-		textArea.setWidth("300px");
-		textArea.setHeight("200px");
+		final ListBox format = new ListBox();
+		format.addItem(Locale.LS("Auto-detect"));
+		format.addItem(Locale.LS("SPICE-style netlist"));
+		format.addItem(Locale.LS("ngspice deck (first line is title)"));
+		format.addItem(Locale.LS("CircuitJS text"));
+		format.getElement().setAttribute("aria-label", Locale.LS("Import format"));
+		vp.add(format);
+		String pasteInstructions = Locale.LS("Paste CircuitJS text or a netlist. For a titled ngspice file, choose ngspice deck.");
+		final Label instructions = new Label(pasteInstructions);
+		instructions.setWidth("min(300px, 80vw)");
+		vp.add(instructions);
+		CircuitTextEditor editor = new CircuitTextEditor(Locale.LS("Circuit text"));
+		textArea = editor.textArea;
+		vp.add(editor);
+		if (!sim.elmList.isEmpty())
+			editor.setText(sim.dumpCircuit());
 		vp.add(subCheck = new Checkbox(Locale.LS("Load Subcircuits Only")));
+		final Label error = new Label();
+		error.setWidth("min(300px, 80vw)");
+		error.getElement().setAttribute("role", "alert");
+		vp.add(error);
+		format.addChangeHandler(event -> {
+			int selected = format.getSelectedIndex();
+			boolean netlist = selected == 1 || selected == 2;
+			subCheck.setVisible(!netlist);
+			instructions.setText(netlist
+				? Locale.LS("Enter R, C, L, DC V/I, K coupling groups, or X subcircuit calls. Use 0 or GND for ground.")
+				: pasteInstructions);
+			textArea.getElement().setAttribute("placeholder", netlist
+				? (selected == 2 ? "RC circuit\n" : "") + "V1 IN 0 DC 5\nR1 IN OUT 1k\nC1 OUT 0 100n\n.end"
+				: "");
+			error.setText("");
+		});
 		hp = new HorizontalPanel();
+		hp.setWidth("100%");
 		vp.add(hp);
 		hp.add(okButton = new Button(Locale.LS("OK")));
 		okButton.addClickHandler(new ClickHandler() {
 			public void onClick(ClickEvent event) {
-				String s;
-				sim.pushUndo();
-				closeDialog();
-//				s=textBox.getHTML();
-//				s=s.replace("<br>", "\r");
-				s=textArea.getText();
-				sim.importCircuitFromText(s, subCheck.getState());
+				String s = textArea.getText();
+				int selected = format.getSelectedIndex();
+				boolean netlist = selected == 1 || selected == 2
+					|| (selected == 0 && !subCheck.getState() && !NetlistImport.looksLikeCircuitJS(s));
+				if (netlist) {
+					try {
+						s = NetlistImport.toCircuit(s, selected == 2);
+					} catch (IllegalArgumentException e) {
+						error.setText(e.getMessage());
+						return;
+					}
+				}
+                boolean subcircuitsOnly = !netlist && subCheck.getState();
+                closeDialog();
+                if (!sim.importMobileCircuit(s, null, subcircuitsOnly)) {
+                    sim.pushUndo();
+                    sim.importCircuitFromText(s, subcircuitsOnly);
+                }
 			}
 		});
 		hp.add(cancelButton = new Button(Locale.LS("Cancel")));
@@ -70,6 +109,15 @@ TextArea textArea;
 			public void onClick(ClickEvent event) {
 				closeDialog();
 			}
+		});
+		Button clearButton = new Button(Locale.LS("Clear"));
+		hp.add(clearButton);
+		hp.setCellWidth(clearButton, "100%");
+		hp.setCellHorizontalAlignment(clearButton, HorizontalPanel.ALIGN_RIGHT);
+		clearButton.addClickHandler(event -> {
+			editor.setText("");
+			error.setText("");
+			textArea.setFocus(true);
 		});
 		this.center();
 		show();

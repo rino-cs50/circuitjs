@@ -35,10 +35,14 @@ public class HtmlSlider extends Composite {
 
     // Simple constructor (what we used before)
     public HtmlSlider(int minimum, int maximum, int value) {
+        this(minimum, maximum, value, null);
+    }
+
+    public HtmlSlider(int minimum, int maximum, int value, Command command) {
         this.min = minimum;
         this.max = maximum;
         this.currentValue = value;
-        this.command = null;
+        this.command = command;
         this.attachedElm = null;
 
         init();

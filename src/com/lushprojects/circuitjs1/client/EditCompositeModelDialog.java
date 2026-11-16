@@ -21,27 +21,16 @@ package com.lushprojects.circuitjs1.client;
 
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.HashSet;
+import com.google.gwt.dom.client.CanvasElement;
 import com.google.gwt.user.client.ui.HasHorizontalAlignment;
 import com.google.gwt.user.client.ui.HorizontalPanel;
 import com.google.gwt.user.client.Window;
-import com.google.gwt.user.client.ui.Anchor;
 import com.google.gwt.user.client.ui.Button;
 import com.google.gwt.user.client.ui.VerticalPanel;
 import com.lushprojects.circuitjs1.client.ChipElm.Pin;
 import com.lushprojects.circuitjs1.client.util.Locale;
 import com.google.gwt.event.dom.client.ClickHandler;
-import com.google.gwt.event.dom.client.MouseDownEvent;
-import com.google.gwt.event.dom.client.MouseDownHandler;
-import com.google.gwt.event.dom.client.MouseMoveEvent;
-import com.google.gwt.event.dom.client.MouseMoveHandler;
-import com.google.gwt.event.dom.client.MouseOutEvent;
-import com.google.gwt.event.dom.client.MouseOutHandler;
-import com.google.gwt.event.dom.client.MouseOverEvent;
-import com.google.gwt.event.dom.client.MouseOverHandler;
-import com.google.gwt.event.dom.client.MouseUpEvent;
-import com.google.gwt.event.dom.client.MouseUpHandler;
 import com.google.gwt.event.logical.shared.ValueChangeEvent;
 import com.google.gwt.event.logical.shared.ValueChangeHandler;
 import com.google.gwt.canvas.client.Canvas;
@@ -50,7 +39,7 @@ import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.user.client.ui.Label;
 import com.google.gwt.user.client.ui.TextBox;
 
-public class EditCompositeModelDialog extends Dialog implements MouseDownHandler, MouseMoveHandler, MouseUpHandler, MouseOutHandler, MouseOverHandler {
+public class EditCompositeModelDialog extends Dialog {
 	
 	VerticalPanel vp;
 	boolean error;
@@ -120,20 +109,16 @@ public class EditCompositeModelDialog extends Dialog implements MouseDownHandler
 
 	void createDialog() {
 		Button okButton;
-		Anchor a;
 		vp=new VerticalPanel();
 		setWidget(vp);
 		setText(Locale.LS("Edit Subcircuit Pin Layout"));
 		vp.add(new Label(Locale.LS("Drag the pins to the desired position")));
-		Date date = new Date();
 
 		Canvas canvas = Canvas.createIfSupported();
-		canvas.setWidth("400 px");
-		canvas.setHeight("400 px");
 		canvas.setCoordinateSpaceWidth(400);
 		canvas.setCoordinateSpaceHeight(400);
 		vp.add(canvas);
-		CirSim.doTouchHandlers(null, canvas.getCanvasElement());
+		addPinPointerHandlers(canvas.getCanvasElement());
 		context = canvas.getContext2d();
 		
 		chip = new CustomCompositeChipElm(50, 50);
@@ -196,12 +181,6 @@ public class EditCompositeModelDialog extends Dialog implements MouseDownHandler
 		vp.add(saveCheck = new Checkbox(Locale.LS("Save Across Sessions")));
 		saveCheck.setState(model.isSaved());
 	
-                canvas.addMouseDownHandler(this);
-                canvas.addMouseUpHandler(this);
-                canvas.addMouseMoveHandler(this);
-                canvas.addMouseOutHandler(this);
-                canvas.addMouseOverHandler(this);
-
                 hp = new HorizontalPanel();
                 hp.setWidth("100%");
                 hp.setHorizontalAlignment(HasHorizontalAlignment.ALIGN_LEFT);
@@ -289,71 +268,92 @@ public class EditCompositeModelDialog extends Dialog implements MouseDownHandler
 	    drawChip();
 	}
 	
-	boolean dragging;
-	
-	public void onMouseOver(MouseOverEvent event) {
-	    // TODO Auto-generated method stub
-	    
-	}
-
-	public void onMouseOut(MouseOutEvent event) {
-	    // TODO Auto-generated method stub
-	    
-	}
-
-	public void onMouseUp(MouseUpEvent event) {
-	    dragging = false;
-	}
-
 	int selectedPin;
-	
-	public void onMouseMove(MouseMoveEvent event) {
-	    mouseMoved(event.getX(), event.getY());
-	}
-	
-	void mouseMoved(int x, int y) {
-	    if (dragging) {
-		if (selectedPin < 0)
+
+	private native void addPinPointerHandlers(CanvasElement canvas) /*-{
+	    var dialog = this;
+	    var pointer = null;
+	    canvas.style.touchAction = "none";
+
+	    function update(event, dragging) {
+		var bounds = canvas.getBoundingClientRect();
+		var x = (event.clientX - bounds.left) * canvas.width / bounds.width;
+		var y = (event.clientY - bounds.top) * canvas.height / bounds.height;
+		if (dragging)
+		    dialog.@com.lushprojects.circuitjs1.client.EditCompositeModelDialog::movePin(DD)(x, y);
+		else
+		    return dialog.@com.lushprojects.circuitjs1.client.EditCompositeModelDialog::selectPin(DD)(x, y);
+	    }
+
+	    canvas.addEventListener("pointerdown", function(event) {
+		if (pointer !== null || !event.isPrimary || event.button !== 0 || !update(event, false))
 		    return;
-		int pos[] = new int[2];
-		if (!chip.getPinPos((int)(x*scale), (int)(y*scale), selectedPin, pos))
-		    return;
-		ExtListEntry p = model.extList.get(selectedPin);
-		int pn = chip.getOverlappingPin(pos[0], pos[1], selectedPin);
-		if (pn != -1) {
-		    // swap positions with overlapping pin
-		    ExtListEntry p2 = model.extList.get(pn);
-		    p2.pos = p.pos;
-		    p2.side = p.side;
+		event.preventDefault();
+		pointer = event.pointerId;
+		canvas.setPointerCapture(pointer);
+	    });
+	    canvas.addEventListener("pointermove", function(event) {
+		if (event.pointerId === pointer)
+		    update(event, true);
+		else if (pointer === null && event.pointerType === "mouse")
+		    update(event, false);
+	    });
+	    canvas.addEventListener("lostpointercapture", function(event) {
+		if (event.pointerId === pointer)
+		    pointer = null;
+	    });
+	}-*/;
+
+	boolean selectPin(double x, double y) {
+	    // Give labels and leads a little padding, capped to half the pin spacing.
+	    double bestDistance = Math.min(10 * scale, chip.cspc);
+	    int nearest = -1;
+	    for (int i = 0; i < postCount; i++) {
+		Pin pin = chip.pins[i];
+		double labelDistance = distanceFromBox(x * scale, y * scale,
+			pin.labelLeft, pin.labelTop, pin.labelRight, pin.labelBottom);
+		double leadDistance = distanceFromBox(x * scale, y * scale,
+			Math.min(pin.post.x, pin.stub.x), Math.min(pin.post.y, pin.stub.y),
+			Math.max(pin.post.x, pin.stub.x), Math.max(pin.post.y, pin.stub.y));
+		double distance = Math.min(labelDistance, leadDistance);
+		if (distance < bestDistance) {
+		    bestDistance = distance;
+		    nearest = i;
 		}
-		p.pos  = pos[0];
-		p.side = pos[1];
-		createPinsFromModel();
-		drawChip();
-	    } else {
-		int i;
-		double bestdist = 20;
-		selectedPin = -1;
-		for (i = 0; i != postCount; i++) {
-		    Pin p = chip.pins[i];
-		    int dx = (int)(x*scale) - p.textloc.x;
-		    int dy = (int)(y*scale) - p.textloc.y;
-		    double dist = Math.hypot(dx, dy);
-		    if (dist < bestdist) {
-			bestdist = dist;
-			selectedPin = i;
-		    }
-		    p.selected = false;
-		}
+	    }
+	    if (nearest != selectedPin) {
+		if (selectedPin >= 0)
+		    chip.pins[selectedPin].selected = false;
+		selectedPin = nearest;
 		if (selectedPin >= 0)
 		    chip.pins[selectedPin].selected = true;
 		drawChip();
 	    }
+	    return selectedPin >= 0;
 	}
 
-	public void onMouseDown(MouseDownEvent event) {
-	    mouseMoved(event.getX(), event.getY());
-	    dragging = true;
+	private double distanceFromBox(double x, double y, int left, int top, int right, int bottom) {
+	    return Math.hypot(Math.max(0, Math.max(left - x, x - right)),
+			      Math.max(0, Math.max(top - y, y - bottom)));
+	}
+
+	void movePin(double x, double y) {
+	    int pos[] = new int[2];
+	    if (!chip.getPinPos((int)(x * scale), (int)(y * scale), selectedPin, pos))
+		return;
+	    ExtListEntry pin = model.extList.get(selectedPin);
+	    if (pin.pos == pos[0] && pin.side == pos[1])
+		return;
+	    int overlapping = chip.getOverlappingPin(pos[0], pos[1], selectedPin);
+	    if (overlapping >= 0) {
+		ExtListEntry other = model.extList.get(overlapping);
+		other.pos = pin.pos;
+		other.side = pin.side;
+	    }
+	    pin.pos = pos[0];
+	    pin.side = pos[1];
+	    createPinsFromModel();
+	    drawChip();
 	}
 
 	public void show() {

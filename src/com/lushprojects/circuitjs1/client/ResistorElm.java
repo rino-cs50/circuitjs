@@ -82,7 +82,7 @@ import com.lushprojects.circuitjs1.client.util.Locale;
 		g.context.strokeRect(0, -hs, len, 2.0*hs);
 	    }
 	    g.context.restore();
-	    if (sim.showValuesCheckItem.getState()) {
+	    if (referenceNumber == 0 && sim.showValuesCheckItem.getState()) {
 		String s = getShortUnitText(resistance, "");
 		drawValues(g, s, hs+2);
 	    }

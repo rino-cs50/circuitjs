@@ -21,13 +21,17 @@ package com.lushprojects.circuitjs1.client;
 
 class ScopeElm extends CircuitElm {
     
+    static final int DEFAULT_WIDTH = 128;
+    static final int DEFAULT_HEIGHT = 64;
+
     Scope elmScope;
+    boolean cursorEnabled;
 
     public ScopeElm(int xx, int yy) {
 	super(xx, yy);
 	noDiagonal=false;
-	x2=x+128;
-	y2=y+64;
+	x2=x+DEFAULT_WIDTH;
+	y2=y+DEFAULT_HEIGHT;
 	elmScope = new Scope(sim);
 	setPoints();
     }
@@ -66,6 +70,9 @@ class ScopeElm extends CircuitElm {
     
     public void setElmScope( Scope s) {
 	elmScope=s;
+	s.position = -1;
+	s.dockedHeaderHeight = 0;
+	setScopeRect();
     }
     
     
@@ -101,12 +108,23 @@ class ScopeElm extends CircuitElm {
 	g.context.save();
 	// setTransform() doesn't work in version of canvas2svg we are using
 	g.context.scale(1/sim.transform[0], 1/sim.transform[3]);
-	g.context.translate(-sim.transform[4], -sim.transform[5]);
+	g.context.translate(-sim.transform[4], -sim.transform[5] - sim.circuitArea.y);
 	//g.context.scale(CirSim.devicePixelRatio(), CirSim.devicePixelRatio());
 
 	setScopeRect();
 	elmScope.position = -1;
 	elmScope.draw(g);
+	Rectangle button = cursorButtonBounds();
+	g.setColor(cursorEnabled ? "#115ba1" : "#263445");
+	g.fillRect(button.x, button.y, button.width, button.height);
+	g.setColor(Color.white);
+	int cx = button.x + button.width / 2;
+	int cy = button.y + button.height / 2;
+	g.context.beginPath();
+	g.context.arc(cx, cy, 6, 0, 2 * Math.PI);
+	g.context.stroke();
+	g.drawLine(cx - 9, cy, cx + 9, cy);
+	g.drawLine(cx, cy - 9, cx, cy + 9);
 	g.context.restore();
 	setBbox(point1, point2, 0);
 	drawPosts(g);
@@ -116,5 +134,22 @@ class ScopeElm extends CircuitElm {
     int getPostCount() { return 0; }
     int getNumHandles() { return 2; }
     
-    void selectScope(int mx, int my) { elmScope.selectScope(mx, my); }
+    Rectangle cursorButtonBounds() {
+	Rectangle rect = elmScope.rect;
+	return new Rectangle(rect.x + rect.width - 30, rect.y + 4, 26, 26);
+    }
+
+    int touchResizeHandle(int sx, int sy) {
+	double first = Math.hypot(sx - sim.transformX(x), sy - sim.transformY(y));
+	double second = Math.hypot(sx - sim.transformX(x2), sy - sim.transformY(y2));
+	int radius = 12;
+	return Math.min(first, second) <= radius ? (first <= second ? 0 : 1) : -1;
+    }
+
+    void selectScope(int mx, int my) {
+	if (cursorEnabled && !sim.dragging && !cursorButtonBounds().contains(mx, my))
+	    elmScope.selectScope(mx, my);
+	else
+	    elmScope.checkForSelection(mx, my);
+    }
 }

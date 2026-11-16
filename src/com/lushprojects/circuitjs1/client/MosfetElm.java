@@ -36,6 +36,7 @@ class MosfetElm extends CircuitElm {
 	double vt;
 	// beta = 1/(RdsON*(Vgs-Vt))
 	double beta;
+	String textModelName;
 	static int globalFlags;
 	Diode diodeB1, diodeB2;
 	double diodeCurrent1, diodeCurrent2, bodyCurrent;
@@ -64,6 +65,11 @@ class MosfetElm extends CircuitElm {
 	    try {
 		vt = new Double(st.nextToken()).doubleValue();
 		beta = new Double(st.nextToken()).doubleValue();
+		if (st.hasMoreTokens()) {
+		    String token = st.nextToken();
+		    if (token.startsWith("@model="))
+			textModelName = CustomLogicModel.unescape(token.substring(7));
+		}
 	    } catch (Exception e) {}
 	    globalFlags = flags & (FLAGS_GLOBAL);
 	    allocNodes(); // make sure volts[] has the right number of elements when hasBodyTerminal() is true 
@@ -102,7 +108,8 @@ class MosfetElm extends CircuitElm {
 		volts[bodyTerminal] = 0;
 	}
 	String dump() {
-	    return super.dump() + " " + vt + " " + beta;
+	    return super.dump() + " " + vt + " " + beta
+		+ (textModelName == null ? "" : " @model=" + CustomLogicModel.escape(textModelName));
 	}
 	int getDumpType() { return 'f'; }
 	final int hs = 16;
@@ -124,7 +131,7 @@ class MosfetElm extends CircuitElm {
 		int segments = 6;
 		int i;
 		setPowerColor(g, true);
-		boolean power = sim.powerCheckItem.getState();
+		boolean power = sim.isPowerColorEnabled();
 		double segf = 1./segments;
 		boolean enhancement = vt > 0 && showBulk();
 		for (i = 0; i != segments; i++) {
@@ -494,9 +501,9 @@ class MosfetElm extends CircuitElm {
 		return null;
 	}
 	public void setEditValue(int n, EditInfo ei) {
-		if (n == 0)
-			vt = pnp*ei.value;
-		if (n == 1 && ei.value > 0)
+		if (n == 0 && changedModelValue(ei, pnp * vt))
+			vt = pnp * ei.value;
+		if (n == 1 && ei.value > 0 && changedModelValue(ei, beta))
 			beta = lastBeta = ei.value;	
 		if (n == 2) {
 		    globalFlags = (!ei.checkbox.getState()) ? (globalFlags|FLAG_HIDE_BULK) :
@@ -526,6 +533,16 @@ class MosfetElm extends CircuitElm {
 		allocNodes();
 		setPoints();
 	}
+	private boolean changedModelValue(EditInfo ei, double previous) {
+	    if (textModelName == null)
+		return true;
+	    if (ei.value == previous || (ei.textf != null
+		    && ei.textf.getText().equals(EditDialog.unitString(ei, previous))))
+		return false;
+	    textModelName = null;
+	    return true;
+	}
+
 	double getCurrentIntoNode(int n) {
 	    if (n == 0)
 		return 0;

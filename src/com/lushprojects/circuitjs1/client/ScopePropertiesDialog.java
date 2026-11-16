@@ -15,6 +15,7 @@ import com.google.gwt.user.client.ui.HasHorizontalAlignment;
 import com.google.gwt.user.client.ui.HasVerticalAlignment;
 import com.google.gwt.user.client.ui.HorizontalPanel;
 import com.google.gwt.user.client.ui.Label;
+import com.google.gwt.user.client.ui.ListBox;
 import com.google.gwt.user.client.ui.Panel;
 import com.google.gwt.user.client.ui.TextArea;
 import com.google.gwt.user.client.ui.TextBox;
@@ -45,7 +46,8 @@ class ScopeCheckBox extends CheckBox {
 public class ScopePropertiesDialog extends Dialog implements ValueChangeHandler<Boolean> {
 
 	
-Panel fp, channelButtonsp, channelSettingsp;
+FlowPanel fp;
+Panel channelButtonsp, channelSettingsp;
 HorizontalPanel hp;
 HorizontalPanel vModep;
 CirSim sim;
@@ -57,9 +59,14 @@ CheckBox scaleBox, voltageBox, currentBox, powerBox, peakBox, negPeakBox, freqBo
 CheckBox rmsBox, dutyBox, viBox, xyBox, resistanceBox, ibBox, icBox, ieBox, vbeBox, vbcBox, vceBox, vceIcBox, logSpectrumBox, averageBox;
 CheckBox elmInfoBox;
 TextBox labelTextBox, manualScaleTextBox, divisionsTextBox;
-Button applyButton, scaleUpButton, scaleDownButton;
+Button scaleUpButton, scaleDownButton;
 HtmlSlider speedBar,positionBar;
 Scope scope;
+	private final boolean embedded;
+	private final FlowPanel axisControls = new FlowPanel();
+	private expandingLabel scopeDisplayLabel;
+        private final ListBox xAxis = new ListBox(), yAxis = new ListBox();
+        private final java.util.ArrayList<CircuitElm> axisSources = new java.util.ArrayList<CircuitElm>();
 Grid grid, vScaleGrid, hScaleGrid;
 int nx, ny;
 Label scopeSpeedLabel, manualScaleLabel,vScaleList, manualScaleId, positionLabel, divisionsLabel;
@@ -90,7 +97,7 @@ labelledGridManager gridLabels;
     class manualScaleTextHandler implements ValueChangeHandler<String> {
 	
 	public void onValueChange(ValueChangeEvent<String> event) {
-	    apply();
+	    applyManualScale();
 	    updateUi();
 	}
 	
@@ -115,6 +122,7 @@ labelledGridManager gridLabels;
 		s*=Scope.multa[a%3];
 	    }
 	    scope.setManualScaleValue(plotSelection, lasts);
+            scope.sim.circuitChanged();
 	    updateUi();
 	}
 	
@@ -134,6 +142,7 @@ labelledGridManager gridLabels;
 		return;
 	    s=nextHighestScale(d);
 	    scope.setManualScaleValue(plotSelection, s);
+            scope.sim.circuitChanged();
 	    updateUi();
 	}
 	
@@ -154,6 +163,7 @@ labelledGridManager gridLabels;
 	    return;
 	int p = positionBar.getValue();
 	scope.setPlotPosition(plotSelection, p);
+        scope.sim.circuitChanged();
     }
     
     String getChannelButtonLabel(int i) {
@@ -212,6 +222,7 @@ labelledGridManager gridLabels;
 	Label l;
 	Button b;
 	Boolean expanded;
+	boolean visible = true;
 	
 	expandingLabel(String s, Boolean ex) {
 	    expanded = ex;
@@ -235,23 +246,28 @@ labelledGridManager gridLabels;
     }
 
 	public ScopePropertiesDialog ( CirSim asim, Scope s) {
+		this(asim, s, false);
+	}
+
+	ScopePropertiesDialog(CirSim asim, Scope s, boolean embedded) {
 		super();
+		this.embedded = embedded;
 		// We are going to try and keep the panel below the target height (defined to give some space)
 		int allowedHeight = Window.getClientHeight()*4/5;
-		boolean displayAll = allowedHeight > 600; // We can display everything as maximum height can be shown
-		boolean displayScales = allowedHeight > 470; // We can display the scales and any one other section. So expand scales and collapse rest
+		boolean displayAll = !embedded && allowedHeight > 600; // Expand sections when there is room
+		boolean displayScales = !embedded && allowedHeight > 470;
 		sim=asim;
 		scope = s;
-		Button okButton, applyButton2;
 		fp=new FlowPanel();
-		setWidget(fp);
+		if (!embedded)
+		    setWidget(fp);
 		setText(Locale.LS("Scope Properties"));
 
 // *************** VERTICAL SCALE ***********************************************************
-		Grid vSLG = new Grid(1,1); // Stupid grid to force labels to align without diving deep in to table CSS
-		vScaleLabel = new expandingLabel(Locale.LS("Vertical Scale"), displayScales);
-		vSLG.setWidget(0,0,vScaleLabel.p);
-		fp.add(vSLG);
+		Grid verticalHeading = new Grid(1,1);
+		vScaleLabel = new expandingLabel(Locale.LS(embedded ? "Channel coupling" : "Vertical Scale"), displayScales);
+		verticalHeading.setWidget(0,0,vScaleLabel.p);
+		fp.add(verticalHeading);
 		
 				
 		vModep = new HorizontalPanel();
@@ -260,6 +276,7 @@ labelledGridManager gridLabels;
 	            public void onValueChange(ValueChangeEvent<Boolean> e) {
 	        	scope.setManualScale(false, false);
 	        	scope.setMaxScale(false);
+                        scope.sim.circuitChanged();
 	        	updateUi();
 	            }
 	        });
@@ -268,6 +285,7 @@ labelledGridManager gridLabels;
 	            public void onValueChange(ValueChangeEvent<Boolean> e) {
 	        	scope.setManualScale(false, false);
 	        	scope.setMaxScale(true);
+                        scope.sim.circuitChanged();
 	        	updateUi();
 	            }
 	        });
@@ -275,6 +293,7 @@ labelledGridManager gridLabels;
 		manualButton.addValueChangeHandler(new ValueChangeHandler<Boolean>() {
 	            public void onValueChange(ValueChangeEvent<Boolean> e) {
 	        	scope.setManualScale(true, true);
+                        scope.sim.circuitChanged();
 	        	updateUi();
 	            }
 	        });
@@ -295,6 +314,7 @@ labelledGridManager gridLabels;
 		    if (plotSelection<scope.visiblePlots.size())
 			scope.visiblePlots.get(plotSelection).setAcCoupled(false);
 		    updateUi();
+		    scope.sim.scopeInfoChanged();
 		    }
 		});
 		vScaleGrid.setWidget(0, 0, dcButton);
@@ -304,6 +324,7 @@ labelledGridManager gridLabels;
 		    if (plotSelection<scope.visiblePlots.size())
 			scope.visiblePlots.get(plotSelection).setAcCoupled(true);
 		    updateUi();
+		    scope.sim.scopeInfoChanged();
 		    }
 		});
 		vScaleGrid.setWidget(0, 1, acButton);
@@ -343,20 +364,12 @@ labelledGridManager gridLabels;
 		vScaleGrid.setWidget(2,1, scaleBoxGrid);
 		manualScaleLabel = new Label("");
 		vScaleGrid.setWidget(2,2, manualScaleLabel);
-		vScaleGrid.setWidget(2,4, applyButton = new Button(Locale.LS("Apply")));
 		divisionsLabel = new Label(Locale.LS("# of Divisions"));
 		divisionsTextBox = new TextBox();
 		divisionsTextBox.addValueChangeHandler(new manualScaleTextHandler());
 		vScaleGrid.setWidget(3,0, divisionsLabel);
 		vScaleGrid.setWidget(3,1, divisionsTextBox);
-		applyButton.addClickHandler(new ClickHandler() {
-			public void onClick(ClickEvent event) {
-				apply();
-			}
-		});
-		Button applyButtonDiv;
-		vScaleGrid.setWidget(3,4, applyButtonDiv = new Button(Locale.LS("Apply")));
-		applyButtonDiv.addClickHandler(new ClickHandler() { public void onClick(ClickEvent event) { apply(); } });
+		vScaleGrid.setWidget(3,4, new Button(Locale.LS("Apply"), (ClickHandler) event -> applyManualScale()));
 
 		vScaleGrid.getCellFormatter().setVerticalAlignment(1, 1, HasVerticalAlignment.ALIGN_MIDDLE);
 		fp.add(vScaleGrid);
@@ -365,7 +378,7 @@ labelledGridManager gridLabels;
 
 		
 		hScaleGrid = new Grid(2,4);
-		hScaleLabel = new expandingLabel(Locale.LS("Horizontal Scale"), displayScales);
+		hScaleLabel = new expandingLabel(Locale.LS(embedded ? "Spectrum time scale" : "Horizontal Scale"), displayScales);
 		hScaleGrid.setWidget(0, 0, hScaleLabel.p);
 		speedBar = new HtmlSlider(Scrollbar.HORIZONTAL, 2, 1, 0, 11, new Command() {
 		    public void execute() {
@@ -386,17 +399,17 @@ labelledGridManager gridLabels;
 		CircuitElm elm = scope.getSingleElm();
 		boolean transistor = elm != null && elm instanceof TransistorElm;
 		if (!transistor) {
-		    grid = new Grid(11, 3);
+		    grid = new Grid(12, 3);
 		    gridLabels = new labelledGridManager(grid);
-		    gridLabels.addLabel(Locale.LS("Plots"), displayAll);
-		    addItemToGrid(grid, voltageBox = new ScopeCheckBox(Locale.LS("Show Voltage"), "showvoltage"));
+		    gridLabels.addLabel(Locale.LS(embedded ? "Scope channels" : "Plots"), displayAll);
+		    addItemToGrid(grid, voltageBox = new ScopeCheckBox(Locale.LS(embedded ? "Voltage channel" : "Show Voltage"), "showvoltage"));
 		    voltageBox.addValueChangeHandler(this); 
-		    addItemToGrid(grid, currentBox = new ScopeCheckBox(Locale.LS("Show Current"), "showcurrent"));
+		    addItemToGrid(grid, currentBox = new ScopeCheckBox(Locale.LS(embedded ? "Current channel" : "Show Current"), "showcurrent"));
 		    currentBox.addValueChangeHandler(this);
 		} else {
-		    grid = new Grid(13,3);
+		    grid = new Grid(14,3);
 		    gridLabels = new labelledGridManager(grid);
-		    gridLabels.addLabel(Locale.LS("Plots"), displayAll);
+		    gridLabels.addLabel(Locale.LS(embedded ? "Scope channels" : "Plots"), displayAll);
 		    addItemToGrid(grid, ibBox = new ScopeCheckBox(Locale.LS("Show Ib"), "showib"));
 		    ibBox.addValueChangeHandler(this);
 		    addItemToGrid(grid, icBox = new ScopeCheckBox(Locale.LS("Show Ic"), "showic"));
@@ -410,25 +423,41 @@ labelledGridManager gridLabels;
 		    addItemToGrid(grid, vceBox = new ScopeCheckBox(Locale.LS("Show Vce"), "showvce"));
 		    vceBox.addValueChangeHandler(this);
 		}
-		addItemToGrid(grid, powerBox = new ScopeCheckBox(Locale.LS("Show Power Consumed"), "showpower"));
+		addItemToGrid(grid, powerBox = new ScopeCheckBox(Locale.LS(embedded ? "Power channel" : "Show Power Consumed"), "showpower"));
 		powerBox.addValueChangeHandler(this); 
-		addItemToGrid(grid, resistanceBox = new ScopeCheckBox(Locale.LS("Show Resistance"), "showresistance"));
+		addItemToGrid(grid, resistanceBox = new ScopeCheckBox(Locale.LS(embedded ? "Resistance channel" : "Show Resistance"), "showresistance"));
 		resistanceBox.addValueChangeHandler(this); 
 		addItemToGrid(grid, spectrumBox = new ScopeCheckBox(Locale.LS("Show Spectrum"), "showfft"));
 		spectrumBox.addValueChangeHandler(this);
 		addItemToGrid(grid, logSpectrumBox = new ScopeCheckBox(Locale.LS("Log Spectrum"), "logspectrum"));
 		logSpectrumBox.addValueChangeHandler(this);
 		
-		gridLabels.addLabel(Locale.LS("X-Y Plots"), displayAll);
-		addItemToGrid(grid, viBox = new ScopeCheckBox(Locale.LS("Show V vs I"), "showvvsi"));
-		viBox.addValueChangeHandler(this); 
-		addItemToGrid(grid, xyBox = new ScopeCheckBox(Locale.LS("Plot X/Y"), "plotxy"));
-		xyBox.addValueChangeHandler(this);
+		if (!embedded) {
+		    gridLabels.addLabel(Locale.LS("X-Y Plots"), displayAll);
+		    addItemToGrid(grid, viBox = new ScopeCheckBox(Locale.LS("Show V vs I"), "showvvsi"));
+		    viBox.addValueChangeHandler(this);
+		    addItemToGrid(grid, xyBox = new ScopeCheckBox(Locale.LS("Plot X/Y"), "plotxy"));
+		    xyBox.addValueChangeHandler(this);
+		}
+                for (CircuitElm source : asim.elmList) {
+                    if (source.getPostCount() > 0 && (source.canViewInScope() || source instanceof LabeledNodeElm))
+                        axisSources.add(source);
+                }
+                if (embedded) {
+                    axisControls.add(xAxis);
+                    axisControls.add(yAxis);
+                    fp.insert(axisControls, 0);
+                } else {
+                    addItemToGrid(grid, xAxis);
+                    addItemToGrid(grid, yAxis);
+                }
+                configureAxis(xAxis, 0, "X axis");
+                configureAxis(yAxis, 1, "Y axis");
 		if (transistor) {
 		    addItemToGrid(grid, vceIcBox = new ScopeCheckBox(Locale.LS("Show Vce vs Ic"), "showvcevsic"));
 		    vceIcBox.addValueChangeHandler(this);
 		}
-		gridLabels.addLabel(Locale.LS("Show Info"), displayAll);
+		scopeDisplayLabel = gridLabels.addLabel(Locale.LS(embedded ? "Scope display" : "Show Info"), displayAll);
 		addItemToGrid(grid, scaleBox = new ScopeCheckBox(Locale.LS("Show Scale"), "showscale"));
 		scaleBox.addValueChangeHandler(this); 
 		addItemToGrid(grid, peakBox = new ScopeCheckBox(Locale.LS("Show Peak Value"), "showpeak"));
@@ -453,12 +482,7 @@ labelledGridManager gridLabels;
 		String labelText = scope.getText();
 		if (labelText != null)
 		    labelTextBox.setText(labelText);
-		addItemToGrid(grid, applyButton2= new Button(Locale.LS("Apply")));
-		applyButton2.addClickHandler(new ClickHandler() {
-			public void onClick(ClickEvent event) {
-				apply();
-			}
-		});
+		addItemToGrid(grid, new Button(Locale.LS("Apply"), (ClickHandler) event -> applyLabel()));
 		
 		updateUi();
 		hp = new HorizontalPanel();
@@ -466,12 +490,8 @@ labelledGridManager gridLabels;
 		hp.setHorizontalAlignment(HasHorizontalAlignment.ALIGN_LEFT);
 		hp.setStyleName("topSpace");
 		fp.add(hp);
-		hp.add(okButton = new Button(Locale.LS("OK")));
-		okButton.addClickHandler(new ClickHandler() {
-			public void onClick(ClickEvent event) {
-				closeDialog();
-			}
-		});
+		if (!embedded)
+		    hp.add(new Button(Locale.LS("OK"), (ClickHandler) event -> closeDialog()));
 
 //		hp.setHorizontalAlignment(HasHorizontalAlignment.ALIGN_CENTER);
 
@@ -484,8 +504,12 @@ labelledGridManager gridLabels;
 				scope.saveAsDefault();
 			}
 		});
-		this.center();
-		show();
+		if (!embedded)
+		    center();
+	}
+
+	Panel controls() {
+	    return fp;
 	}
 
 	class labelledGridManager {
@@ -499,7 +523,7 @@ labelledGridManager gridLabels;
 		labelRows = new Vector <Integer>();
 	    }
 	    
-	    void addLabel(String s, boolean e) {
+	    expandingLabel addLabel(String s, boolean e) {
         	    if (nx != 0)
         		ny++;
         	    nx = 0;
@@ -508,6 +532,7 @@ labelledGridManager gridLabels;
         	    labels.add(l);
         	    labelRows.add(ny);
         	    ny++;
+		    return l;
 	    }
 	    
 	    void updateRowVisibility() {
@@ -518,8 +543,10 @@ labelledGridManager gridLabels;
 			end = labelRows.get(i+1);
 		    else
 			end = g.getRowCount();
+		    expandingLabel label = labels.get(i);
+		    g.getRowFormatter().setVisible(start, label.visible);
 		    for(int j=start+1; j<end; j++)
-			g.getRowFormatter().setVisible(j, labels.get(i).expanded);
+			g.getRowFormatter().setVisible(j, label.visible && label.expanded);
 		}
 	    }
 	    
@@ -542,13 +569,55 @@ labelledGridManager gridLabels;
 	void scrollbarChanged() {
 	    int newsp = (int)Math.pow(2,  10-speedBar.getValue());
 	    CirSim.console("changed " + scope.speed + " " + newsp + " " + speedBar.getValue());
-	    if (scope.speed != newsp)
-		scope.setSpeed(newsp);
+            if (scope.speed != newsp) {
+                scope.setSpeed(newsp);
+                scope.sim.circuitChanged();
+            }
 	    setScopeSpeedLabel();
 	}
 	
+        private void configureAxis(ListBox list, int index, String label) {
+            list.getElement().setAttribute("aria-label", label);
+            list.addItem(label + "…");
+            for (CircuitElm elm : axisSources) {
+                String name = elm instanceof LabeledNodeElm ? ((LabeledNodeElm) elm).getName() : elm.referenceLabel();
+                if (name == null)
+                    name = elm.getScopeText(Scope.VAL_VOLTAGE);
+                list.addItem(label + " · " + (name == null ? "Component " + (scope.sim.locateElm(elm) + 1) : name));
+            }
+            list.addChangeHandler(event -> {
+                int selection = list.getSelectedIndex();
+                if (selection > 0) {
+                    scope.setXYAxis(index, axisSources.get(selection - 1));
+                    scope.sim.circuitChanged();
+                }
+                updateUi();
+                scope.sim.repaint();
+            });
+        }
+
+        private void updateAxis(ListBox list, int index) {
+            list.setVisible(scope.plotXY);
+            int selection = index < scope.plots.size() ? axisSources.indexOf(scope.plots.get(index).elm) + 1 : 0;
+            list.setSelectedIndex(selection);
+        }
+
 	void updateUi() {
-	    vModep.setVisible(vScaleLabel.expanded);
+	    boolean componentScale = !embedded || scope.plot2d || scope.showFFT;
+	    vScaleLabel.l.setText(Locale.LS(componentScale ? (embedded ? "Scope scale" : "Vertical Scale") : "Channel coupling"));
+	    vModep.setVisible(componentScale && vScaleLabel.expanded);
+	    hScaleGrid.setVisible(!embedded || scope.showFFT && !scope.plot2d);
+	    axisControls.setVisible(embedded && scope.plotXY);
+	    boolean scopeReadouts = !embedded || scope.showFFT && !scope.plot2d;
+	    peakBox.setVisible(scopeReadouts);
+	    negPeakBox.setVisible(scopeReadouts);
+	    freqBox.setVisible(scopeReadouts);
+	    averageBox.setVisible(scopeReadouts);
+	    rmsBox.setVisible(scopeReadouts);
+	    dutyBox.setVisible(scopeReadouts);
+	    scaleBox.setVisible(scopeReadouts || scope.plot2d);
+	    elmInfoBox.setVisible(scopeReadouts);
+	    scopeDisplayLabel.visible = scopeReadouts || scope.plot2d;
 	    gridLabels.updateRowVisibility();
 	    hScaleGrid.getRowFormatter().setVisible(1, hScaleLabel.expanded);
 	    speedBar.setValue(10-(int)Math.round(Math.log(scope.speed)/Math.log(2)));
@@ -568,8 +637,12 @@ labelledGridManager gridLabels;
 	    dutyBox.setValue(scope.showDutyCycle);
 	    elmInfoBox.setValue(scope.showElmInfo);
 	    rmsBox.setEnabled(scope.canShowRMS());
-	    viBox.setValue(scope.plot2d && !scope.plotXY);
-	    xyBox.setValue(scope.plotXY);
+	    if (viBox != null) {
+		viBox.setValue(scope.plot2d && !scope.plotXY);
+		xyBox.setValue(scope.plotXY);
+	    }
+            updateAxis(xAxis, 0);
+            updateAxis(yAxis, 1);
 	    resistanceBox.setValue(scope.showingValue(Scope.VAL_R));
 	    resistanceBox.setEnabled(scope.canShowResistance());
 	    if (vbeBox != null) {
@@ -585,13 +658,11 @@ labelledGridManager gridLabels;
 		manualButton.setValue(true);
 		autoButton.setValue(false);
 		maxButton.setValue(false);
-		applyButton.setVisible(true);
 	    }
 	    else {
 		manualButton.setValue(false);
 		autoButton.setValue(! scope.maxScale);
 		maxButton.setValue(scope.maxScale);
-		applyButton.setVisible(false);
 	    }
 	    updateManualScaleUi();
 	    
@@ -602,13 +673,23 @@ labelledGridManager gridLabels;
 	
 	void updateManualScaleUi() {
 	    updateChannelButtons();
-	    channelSettingsp.setVisible(scope.isManualScale() && vScaleLabel.expanded);
+	    boolean couplingOnly = embedded && !scope.plot2d && !scope.showFFT;
+	    boolean manual = scope.isManualScale() && !couplingOnly;
+	    boolean hasPlot = plotSelection < scope.visiblePlots.size();
+	    channelSettingsp.setVisible((manual || couplingOnly) && hasPlot && vScaleLabel.expanded);
 	    vScaleGrid.setVisible(vScaleLabel.expanded);
-	    if (vScaleLabel.expanded) { 
-        	    vScaleGrid.getRowFormatter().setVisible(0, scope.isManualScale() && plotSelection<scope.visiblePlots.size() );
-        	    vScaleGrid.getRowFormatter().setVisible(1, scope.isManualScale() && plotSelection<scope.visiblePlots.size() );
-        	    vScaleGrid.getRowFormatter().setVisible(2, (!scope.isManualScale()) || plotSelection<scope.visiblePlots.size());
-        	    vScaleGrid.getRowFormatter().setVisible(3, scope.isManualScale());
+	    if (vScaleLabel.expanded) {
+		vScaleGrid.getRowFormatter().setVisible(0, (manual || couplingOnly) && hasPlot);
+		vScaleGrid.getRowFormatter().setVisible(1, manual && hasPlot);
+		vScaleGrid.getRowFormatter().setVisible(2, !couplingOnly && (!manual || hasPlot));
+		vScaleGrid.getRowFormatter().setVisible(3, manual);
+	    }
+	    if (hasPlot) {
+		ScopePlot plot = scope.visiblePlots.get(plotSelection);
+		dcButton.setEnabled(true);
+		dcButton.setValue(!plot.isAcCoupled());
+		acButton.setEnabled(plot.canAcCouple());
+		acButton.setValue(plot.isAcCoupled());
 	    }
 	    scaleUpButton.setVisible(scope.isManualScale());
 	    scaleDownButton.setVisible(scope.isManualScale());
@@ -623,11 +704,7 @@ labelledGridManager gridLabels;
 		    divisionsTextBox.setEnabled(true);
 		    positionLabel.setText("CH "+String.valueOf(plotSelection+1)+" "+Locale.LS("Position"));
 		    positionBar.setValue(p.manVPosition);
-		    dcButton.setEnabled(true);
 		    positionBar.enable();
-		    dcButton.setValue(! p.isAcCoupled());
-		    acButton.setEnabled(p.canAcCouple());
-		    acButton.setValue(p.isAcCoupled());
 		    
 		} else {
 		    manualScaleId.setText("");
@@ -686,25 +763,48 @@ labelledGridManager gridLabels;
 	}
 	
 	void apply() {
+	    applyLabel();
+	    applyManualScale();
+	}
+
+	private void applyLabel() {
 	    String label = labelTextBox.getText();
 	    if (label.length() == 0)
 		label = null;
-	    scope.setText(label);
-	    
+            if (!java.util.Objects.equals(label, scope.getText())) {
+                scope.setText(label);
+                scope.sim.circuitChanged();
+            }
+	}
+
+	private void applyManualScale() {
 	    if (scope.isManualScale()) {
 		double d=getManualScaleValue();
-		if (d>0)
-		    scope.setManualScaleValue(plotSelection, d);
+                if (d > 0 && plotSelection < scope.visiblePlots.size()
+                        && d != scope.visiblePlots.get(plotSelection).manScale) {
+                    scope.setManualScaleValue(plotSelection, d);
+                    scope.sim.circuitChanged();
+                }
 		int n = getDivisionsValue();
-		if (n > 0)
-		    scope.setManDivisions(n);
+                if (n > 0 && n != scope.manDivisions) {
+                    scope.setManDivisions(n);
+                    scope.sim.circuitChanged();
+                }
 	    }
 	}
 
 	public void onValueChange(ValueChangeEvent<Boolean> event) {
 	    ScopeCheckBox cb = (ScopeCheckBox) event.getSource();
 	    scope.handleMenu(cb.menuCmd, cb.getValue());
+            scope.sim.circuitChanged();
+            if ("showvvsi".equals(cb.menuCmd) || "plotxy".equals(cb.menuCmd)
+                    || "showfft".equals(cb.menuCmd) || "showvcevsic".equals(cb.menuCmd))
+                scope.sim.scopeModeChanged(scope);
+            else if (cb == scaleBox || cb == peakBox || cb == negPeakBox || cb == freqBox
+                    || cb == averageBox || cb == rmsBox || cb == dutyBox || cb == elmInfoBox)
+                scope.sim.scopeInfoChanged();
 	    updateUi();
+	    scope.sim.repaint();
 	}
 
 

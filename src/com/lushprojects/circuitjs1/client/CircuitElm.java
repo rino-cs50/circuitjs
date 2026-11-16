@@ -734,6 +734,167 @@ public abstract class CircuitElm implements Editable {
 		g.restore();
     }
     
+    int referenceNumber;
+
+    String referencePrefix() {
+	return referencePrefix(getDumpType());
+    }
+
+    static String referencePrefix(int type) {
+	// Use the circuit file's element types so placement and import use the same prefixes.
+	switch (type) {
+	case 'r': case 'm': case 174: case 350: case 374: return "R";
+	case 'c': case 209: return "C";
+	case 'l': return "L";
+	case 'v':
+	case 'R':
+	case 'n': case 170: case 172: case 200: case 201: case 418: return "V";
+	case 'i': return "I";
+	case 212: case 214: return "E"; // Controlled voltage sources
+	case 213: return "G"; // Voltage-controlled current source
+	case 215: return "F"; // Current-controlled current source
+	case 'd': case 'z': case 162: case 175: case 176: case 203: case 405: return "D";
+	case 't': case 'f': case 'j': case 177: case 206: case 400: case 417: return "Q";
+	case 's': case 'S': case 416: case 428: case 429: case 430: return "SW";
+	case 'T': case 169: case 406: return "T";
+	case 178: case 414: case 425: case 426: return "K";
+	case 'a': case 'I':
+	case 150: case 151: case 152: case 153: case 154: case 155: case 156:
+	case 158: case 159: case 160: case 161: case 163: case 164: case 165:
+	case 166: case 167: case 168: case 179: case 180: case 182: case 183:
+	case 184: case 185: case 186: case 188: case 189: case 193: case 194:
+	case 195: case 196: case 197: case 208: case 401: case 402: case 407:
+	case 409: case 410: case 413: case 421: case 422: return "U";
+	case 157: case 419: return "DISP";
+	case 'A': return "ANT";
+	case 'L': case 411: case 424: return "IN";
+	case 'M': case 'O': case 210: case 211: return "OUT";
+	case 'p': case 368: return "TP";
+	case 216: case 370: case 420: return "MEAS";
+	case 408: return "TRIG";
+	case 171: return "TL";
+	case 173: return "VT";
+	case 181: return "LP";
+	case 187: return "SG";
+	case 404: return "FU";
+	case 412: return "Y";
+	case 415: case 427: return "M";
+	// Wires, ground, net labels, annotations and scope views have no designator.
+	default: return null;
+	}
+    }
+
+    String referenceLabel() {
+        String prefix = referencePrefix();
+        return referenceNumber > 0 && prefix != null ? prefix + referenceNumber : null;
+    }
+
+    String componentValue() {
+	if (this instanceof ResistorElm)
+	    return getUnitText(((ResistorElm) this).resistance, "\u03a9");
+	if (this instanceof CapacitorElm)
+	    return getUnitText(((CapacitorElm) this).capacitance, "F");
+	if (this instanceof InductorElm)
+	    return getUnitText(((InductorElm) this).inductance, "H");
+	if (this instanceof PotElm)
+	    return getUnitText(((PotElm) this).maxResistance, "\u03a9");
+	if (getDumpType() == 'i')
+	    return getUnitText(((CurrentElm) this).currentValue, "A");
+	if (this instanceof VoltageElm) {
+	    VoltageElm source = (VoltageElm) this;
+	    if (this instanceof RailElm && (source.waveform == VoltageElm.WF_DC ||
+		    source.waveform == VoltageElm.WF_VAR))
+		return null; // The voltage is already drawn at the rail terminal.
+	    if (this instanceof AntennaElm || this instanceof AudioInputElm ||
+		    this instanceof DataInputElm || this instanceof ExtVoltageElm)
+		return null; // These sources have their own terminal displays.
+	    return getUnitText(source.maxVoltage, source.waveform == VoltageElm.WF_DC ? "V" : "Vpk");
+	}
+	if (this instanceof LampElm) {
+	    LampElm lamp = (LampElm) this;
+	    return getUnitText(lamp.nom_v, "V") + " / " + getUnitText(lamp.nom_pow, "W");
+	}
+	if (this instanceof SweepElm) {
+	    SweepElm sweep = (SweepElm) this;
+	    return getUnitText(sweep.minF, "Hz") + "–" + getUnitText(sweep.maxF, "Hz");
+	}
+	if (this instanceof TransformerElm)
+	    return "1:" + showFormat.format(((TransformerElm) this).ratio);
+	if (this instanceof TappedTransformerElm)
+	    return "1:" + showFormat.format(((TappedTransformerElm) this).ratio);
+	if (this instanceof SparkGapElm)
+	    return getUnitText(((SparkGapElm) this).breakdown, "V");
+	if (this instanceof CrystalElm) {
+	    CrystalElm crystal = (CrystalElm) this;
+	    return getUnitText(1 / (2 * Math.PI * Math.sqrt(crystal.inductance * crystal.seriesCapacitance)), "Hz");
+	}
+	if (this instanceof VaractorElm)
+	    return getUnitText(((VaractorElm) this).capacitance, "F");
+	if (this instanceof ZenerElm)
+	    return getUnitText(((ZenerElm) this).model.breakdownVoltage, "V");
+	if (this instanceof DiodeElm)
+	    return SemiconductorTextModel.displayName(((DiodeElm) this).modelName);
+	if (this instanceof TransistorElm)
+	    return SemiconductorTextModel.displayName(((TransistorElm) this).modelName);
+	if (this instanceof CustomCompositeElm)
+	    return ((CustomCompositeElm) this).modelName;
+	if (this instanceof CustomLogicElm)
+	    return ((CustomLogicElm) this).modelName;
+	if (this instanceof GateElm)
+	    return ((GateElm) this).getGateName();
+	if (this instanceof ChipElm)
+	    return ((ChipElm) this).getChipName();
+
+	// Components such as switches and meters have a type instead of a nominal rating.
+	if (componentType == null) {
+	    String[] info = new String[20];
+	    getInfo(info);
+	    componentType = info[0] == null ? "" : Locale.LS(info[0]);
+	}
+	return componentType;
+    }
+
+    private String componentType;
+
+    void drawReference(Graphics g) {
+        String label = referenceLabel();
+        if (label == null)
+            return;
+	String value = sim.showValuesCheckItem.getState() ? componentValue() : null;
+	if (!sim.showComponentLabels && (value == null || value.isEmpty()))
+	    return;
+
+	int xc = (x + x2) / 2;
+	int yc = (y + y2) / 2;
+	boolean vertical = getPostCount() <= 2 && Math.abs(dy) > Math.abs(dx);
+	int gap = 4;
+
+	g.save();
+	g.setFont(unitsFont);
+	g.setColor(needsHighlight() ? selectColor : whiteColor);
+	if (vertical) {
+	    g.context.setTextBaseline("middle");
+	    if (sim.showComponentLabels) {
+		int width = (int) Math.ceil(g.context.measureText(label).getWidth());
+		g.drawString(label, boundingBox.x - gap - width, yc);
+	    }
+	    if (value != null && !value.isEmpty())
+		g.drawString(value, boundingBox.x + boundingBox.width + gap, yc);
+	} else {
+	    g.context.setTextBaseline("bottom");
+	    if (sim.showComponentLabels) {
+		int width = (int) Math.ceil(g.context.measureText(label).getWidth());
+		g.drawString(label, xc - width / 2, boundingBox.y - gap);
+	    }
+	    g.context.setTextBaseline("top");
+	    if (value != null && !value.isEmpty()) {
+		int width = (int) Math.ceil(g.context.measureText(value).getWidth());
+		g.drawString(value, xc - width / 2, boundingBox.y + boundingBox.height + gap);
+	    }
+	}
+	g.restore();
+    }
+
     // draw component values (number of resistor ohms, etc).  hs = offset
     void drawValues(Graphics g, String s, double hs) {
 	if (s == null)
@@ -919,29 +1080,47 @@ public abstract class CircuitElm implements Editable {
     }
     
     private static String getUnitText(double v, String u, boolean sf) {
+	return getUnitText(v, u, sf, 0);
+    }
+
+    static String getUnitText(double v, String u, int significantDigits) {
+	return getUnitText(v, u, false, significantDigits);
+    }
+
+    private static String getUnitText(double v, String u, boolean sf, int significantDigits) {
 	String sp = sf ? "" : " ";
 	double va = Math.abs(v);
 	if (va < 1e-14)
 	    // this used to return null, but then wires would display "null" with 0V
 	    return "0" + sp + u;
 	if (va < 1e-9)
-	    return format(v*1e12, sf) + sp + "p" + u;
+	    return formatUnitValue(v*1e12, sf, significantDigits) + sp + "p" + u;
 	if (va < 1e-6)
-	    return format(v*1e9, sf) + sp + "n" + u;
+	    return formatUnitValue(v*1e9, sf, significantDigits) + sp + "n" + u;
 	if (va < 1e-3)
-	    return format(v*1e6, sf) + sp + Locale.muString + u;
+	    return formatUnitValue(v*1e6, sf, significantDigits) + sp + Locale.muString + u;
 	if (va < 1)
-	    return format(v*1e3, sf) + sp + "m" + u;
+	    return formatUnitValue(v*1e3, sf, significantDigits) + sp + "m" + u;
 	if (va < 1e3)
-	    return format(v, sf) + sp + u;
+	    return formatUnitValue(v, sf, significantDigits) + sp + u;
 	if (va < 1e6)
-	    return format(v*1e-3, sf) + sp + "k" + u;
+	    return formatUnitValue(v*1e-3, sf, significantDigits) + sp + "k" + u;
 	if (va < 1e9)
-	    return format(v*1e-6, sf) + sp + "M" + u;
+	    return formatUnitValue(v*1e-6, sf, significantDigits) + sp + "M" + u;
 	if (va < 1e12)
-	    return format(v*1e-9, sf) + sp + "G" + u;
+	    return formatUnitValue(v*1e-9, sf, significantDigits) + sp + "G" + u;
+	if (significantDigits > 0)
+	    return formatSignificant(v, significantDigits) + sp + u;
 	return NumberFormat.getFormat("#.##E000").format(v) + sp + u;
     }
+
+    private static String formatUnitValue(double v, boolean sf, int significantDigits) {
+	return significantDigits > 0 ? formatSignificant(v, significantDigits) : format(v, sf);
+    }
+
+    static native String formatSignificant(double v, int digits) /*-{
+	return v === 0 ? "0" : v.toPrecision(digits);
+    }-*/;
     
     static String getCurrentText(double i) {
 	return getUnitText(i, "A");
@@ -1031,26 +1210,23 @@ public abstract class CircuitElm implements Editable {
     
     // yellow argument is unused, can't remember why it was there
     void setPowerColor(Graphics g, boolean yellow) {
-
-	/*if (conductanceCheckItem.getState()) {
-	  setConductanceColor(g, current/getVoltageDiff());
-	  return;
-	  }*/
-	if (!sim.powerCheckItem.getState() )
-	    return;
-	setPowerColor(g, getPower());
+	if (sim.isPowerColorEnabled())
+	    setPowerColor(g, sim.isAveragePowerLossEnabled() ? 0 : getPower());
     }
     
-    void setPowerColor(Graphics g, double w0) {
-	if (!sim.powerCheckItem.getState() )
+    void setPowerColor(Graphics g, double watts) {
+	if (!sim.isPowerColorEnabled())
 	    return;
     	if (needsHighlight()) {
 	    	g.setColor(selectColor);
 	    	return;
     	}
-	w0 *= powerMult;
-	//System.out.println(w);
-	int i = (int) ((colorScaleCount/2)+(colorScaleCount/2)*-w0);
+	if (sim.isAveragePowerLossEnabled()) {
+	    double average = sim.getAveragePowerLoss(this);
+	    watts = Double.isFinite(average) ? average : 0;
+	}
+	watts *= powerMult;
+	int i = (int) ((colorScaleCount/2)+(colorScaleCount/2)*-watts);
 	if (i<0)
 	    i=0;
 	if (i>=colorScaleCount)
@@ -1109,6 +1285,7 @@ public abstract class CircuitElm implements Editable {
     }
     boolean needsHighlight() { 
 	return mouseElmRef==this || selected || sim.plotYElm == this ||
+		sim.highlightsProbeSource(this) ||
 		// Test if the current mouseElm is a ScopeElm and, if so, does it belong to this elm
 		(mouseElmRef instanceof ScopeElm && ((ScopeElm) mouseElmRef).elmScope.getElm()==this); 
     }

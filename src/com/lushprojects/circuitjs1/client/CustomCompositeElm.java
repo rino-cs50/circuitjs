@@ -164,7 +164,7 @@ public class CustomCompositeElm extends CompositeElm {
 	int i;
 	for (i = 0; i != postCount; i++)
 	    externalNodes[i] = model.extList.get(i).node;
-	if (st == null)
+	if (st == null || sim.useUpdatedSubcircuit(modelName))
 	    st = new StringTokenizer(model.elmDump, " ");
 	loadComposite(st, model.nodeList, externalNodes);
 	allocNodes();
@@ -229,12 +229,13 @@ public class CustomCompositeElm extends CompositeElm {
             return;
         }
         if (n == 2) {
-            sim.readCircuit(model.modelCircuit);
+            sim.openSubcircuitEditor(model);
             CirSim.editDialog.closeDialog();
         }
     }
     
-    int getDumpType() { return 410; }
+    static final int DUMP_TYPE = 410;
+    int getDumpType() { return DUMP_TYPE; }
 
     void getInfo(String arr[]) {
 	super.getInfo(arr);

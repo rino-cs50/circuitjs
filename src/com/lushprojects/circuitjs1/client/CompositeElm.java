@@ -73,16 +73,20 @@ public abstract class CompositeElm extends CircuitElm {
 	    String line = modelLinet.nextToken();
 	    StringTokenizer stModel = new StringTokenizer(line, " +\t\n\r\f");
 	    String ceType = stModel.nextToken();
-	    CircuitElm newce = CirSim.constructElement(ceType, 0, 0);
+	    CircuitElm newce;
 	    if (stIn!=null) {
-		int tint = newce.getDumpType();
+		// The saved state contains the nested model name and all of its
+		// children. Avoid constructing the default state and discarding it.
+		int tint = ceType.startsWith("CustomCompositeElm:") ? CustomCompositeElm.DUMP_TYPE
+		    : CirSim.constructElement(ceType, 0, 0).getDumpType();
 		String dumpedCe= stIn.nextToken();
 		if (useEscape())
 		    dumpedCe = CustomLogicModel.unescape(dumpedCe);
 		StringTokenizer stCe = new StringTokenizer(dumpedCe, useEscape() ? " " : "_");
 		int flags = new Integer(stCe.nextToken()).intValue();
 		newce = CirSim.createCe(tint, 0, 0, 0, 0, flags, stCe);
-	    }
+	    } else
+		newce = CirSim.constructElement(ceType, 0, 0);
 	    if (newce instanceof GroundElm)
 		((GroundElm) newce).setOldStyle();
 	    compElmList.add(newce);
@@ -337,6 +341,7 @@ public abstract class CompositeElm extends CircuitElm {
     }
 
     public void stamp() {
+	InductorCoupling.prepare(compElmList);
 	for (int i = 0; i < compElmList.size(); i++) {
 	    CircuitElm ce = compElmList.get(i);
 	    ce.setParentList(compElmList);

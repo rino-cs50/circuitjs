@@ -33,10 +33,12 @@ public class LoadFile extends FileUpload implements  ChangeHandler {
 		 }-*/;
 	
 	static public void doLoadCallback(String s, String t) {
+        if (sim.importMobileCircuit(s, t, false))
+            return;
 		sim.pushUndo();
 		sim.readCircuit(s);
-		sim.createNewLoadFile();
 		sim.setCircuitTitle(t);
+		sim.detachMobileProject();
 		ExportAsLocalFileDialog.setLastFileName(t);
 		sim.unsavedChanges = false;
 	}
@@ -64,21 +66,23 @@ public class LoadFile extends FileUpload implements  ChangeHandler {
 	
 	static public final native void doLoad()
 		/*-{
-			var oFiles = $doc.getElementById("LoadFileElement").files,
-    		nFiles = oFiles.length;
-    		if (nFiles>=1) {
-    		    if (oFiles[0].size >= 128000)
-    		    	alert("File too large!");
-    		    else {
-        		var reader = new FileReader();
-    			reader.onload = function(e) {
-      				var text = reader.result;
-      				@com.lushprojects.circuitjs1.client.LoadFile::doLoadCallback(Ljava/lang/String;Ljava/lang/String;)(text, oFiles[0].name);
-        		};
-
-    			reader.readAsText(oFiles[0]);
-    		    }
-    		}
+            var input = $doc.getElementById("LoadFileElement");
+            var file = input.files[0];
+            if (!file)
+                return;
+            input.value = "";
+            if (file.size >= 128000) {
+                $wnd.alert("File too large!");
+                return;
+            }
+            var reader = new FileReader();
+            reader.onload = $entry(function() {
+                @com.lushprojects.circuitjs1.client.LoadFile::doLoadCallback(Ljava/lang/String;Ljava/lang/String;)(reader.result, file.name);
+            });
+            reader.onerror = function() {
+                $wnd.alert("Could not read the circuit file.");
+            };
+            reader.readAsText(file);
 		 }-*/;
 	
 }

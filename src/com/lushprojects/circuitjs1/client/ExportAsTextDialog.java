@@ -76,13 +76,10 @@ public class ExportAsTextDialog extends Dialog {
 		});
 		importButton.addClickHandler(new ClickHandler() {
 			public void onClick(ClickEvent event) {
-				String s;
-				sim.pushUndo();
-				closeDialog();
-//				s=textBox.getHTML();
-//				s=s.replace("<br>", "\r");
-				s=textArea.getText();
-				if (s!=null) {
+                String s = textArea.getText();
+                closeDialog();
+                if (s != null && !sim.importMobileCircuit(s, null, false)) {
+                    sim.pushUndo();
 					sim.readCircuit(s);
 					sim.allowSave(false);
 				}

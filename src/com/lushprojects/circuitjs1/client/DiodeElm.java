@@ -164,7 +164,7 @@ class DiodeElm extends CircuitElm {
 	if (model.oldStyle)
 	    arr[0] = "diode";
 	else
-	    arr[0] = Locale.LS("diode") + " (" + modelName + ")";
+	    arr[0] = Locale.LS("diode") + " (" + SemiconductorTextModel.displayName(modelName) + ")";
 	arr[1] = "I = " + getCurrentText(getCurrent());
 	arr[2] = "Vd = " + getVoltageText(getVoltageDiff());
 	arr[3] = "P = " + getUnitText(getPower(), "W");
@@ -177,7 +177,7 @@ class DiodeElm extends CircuitElm {
     public EditInfo getEditInfo(int n) {
 	if (n == 0) {
 	    EditInfo ei =  new EditInfo("Model", 0, -1, -1);
-	    models = DiodeModel.getModelList(this instanceof ZenerElm);
+	    models = DiodeModel.getModelList(this instanceof ZenerElm, model);
 	    ei.choice = new Choice();
 	    int i;
 	    for (i = 0; i != models.size(); i++) {
@@ -199,7 +199,7 @@ class DiodeElm extends CircuitElm {
             return ei;
         }
         if (n == 3) {
-            if (model.readOnly)
+            if (model.readOnly || SemiconductorTextModel.isTextModel(modelName))
         	return null;
             EditInfo ei = new EditInfo("", 0, -1, -1);
             ei.button = new Button(Locale.LS("Edit Model"));

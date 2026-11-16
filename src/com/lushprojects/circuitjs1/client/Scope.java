@@ -232,6 +232,7 @@ class Scope {
     boolean logSpectrum;
     boolean showFFT, showNegative, showRMS, showAverage, showDutyCycle, showElmInfo;
     Vector<ScopePlot> plots, visiblePlots;
+    Vector<ScopePlot> timePlots;
     int draw_ox, draw_oy;
     CirSim sim;
     Canvas imageCanvas;
@@ -246,6 +247,8 @@ class Scope {
     int selectedPlot;
     ScopePropertiesDialog properties;
     String curColor, voltColor;
+    int dockedHeaderHeight;
+    private boolean mobileDocked;
     double gridStepX, gridStepY;
     double maxValue, minValue;
     int manDivisions; // Number of vertical divisions when in manual mode
@@ -415,10 +418,13 @@ class Scope {
     }
     
     void setRect(Rectangle r) {
-	int w = this.rect.width;
-	this.rect = r;
-	if (this.rect.width != w)
+	int oldWidth = rect.width;
+	int oldHeight = rect.height;
+	rect = r;
+	if (rect.width != oldWidth)
 	    resetGraph();
+	else if (plot2d && rect.height != oldHeight)
+	    allocImage();
     }
     
     int getWidth() { return rect.width; }
@@ -426,6 +432,7 @@ class Scope {
     int rightEdge() { return rect.x+rect.width; }
 	
     void setElm(CircuitElm ce) {
+        timePlots = null;
 	plots = new Vector<ScopePlot>();
     	if (ce instanceof TransistorElm)
     	    setValue(VAL_VCE, ce);
@@ -546,29 +553,40 @@ class Scope {
 	calcVisiblePlots();
     }
 
-    // separate this scope's plots into separate scopes and return them in arr[pos], arr[pos+1], etc.  return new length of array.
-    int separate(Scope arr[], int pos) {
-	int i;
-	ScopePlot lastPlot = null;
-	for (i = 0; i != visiblePlots.size(); i++) {
-	    if (pos >= arr.length)
-		return pos;
-	    Scope s = new Scope(sim);
-	    ScopePlot sp = visiblePlots.get(i);
-	    if (lastPlot != null && lastPlot.elm == sp.elm && lastPlot.value == VAL_VOLTAGE && sp.value == VAL_CURRENT)
-		continue;
-	    s.setValue(sp.value, sp.elm);
-	    s.position = pos;
-	    arr[pos++] = s;
-	    lastPlot = sp;
-	    s.setFlags(getFlags());
-	    s.setSpeed(speed);
-	}
-	return pos;
+    void combineTimeTraces(Vector<Scope> sources) {
+        Vector<ScopePlot> combined = new Vector<ScopePlot>();
+        for (Scope source : sources)
+            combined.addAll(source.visiblePlots);
+        if (combined.isEmpty())
+            return;
+        plots = combined;
+        showV = showI = true;
+        resetGraph();
     }
 
+
+    void separateInto(Vector<Scope> separated) {
+        // An XY or V-I graph needs both axes in the same scope.
+        if (plot2d || visiblePlots.size() <= 1) {
+            separated.add(this);
+            return;
+        }
+        for (ScopePlot plot : visiblePlots) {
+            Scope scope = new Scope(sim);
+            scope.plots.add(plot);
+            scope.setFlags(getFlags());
+            scope.speed = speed;
+            System.arraycopy(scale, 0, scope.scale, 0, scale.length);
+            scope.manDivisions = manDivisions;
+            scope.text = text;
+            scope.calcVisiblePlots();
+            separated.add(scope);
+        }
+    }
+
+
     void removePlot(int plot) {
-	if (plot < visiblePlots.size()) {
+	if (plot >= 0 && plot < visiblePlots.size()) {
 	    ScopePlot p = visiblePlots.get(plot);
 	    plots.remove(p);
 	    calcVisiblePlots();
@@ -629,8 +647,9 @@ class Scope {
 		if (sim.printableCheckItem.getState()) {
 			imageContext.setStrokeStyle("#000000");
 		} else {
-			imageContext.setStrokeStyle("#ffffff");
+			imageContext.setStrokeStyle(mobileVI() ? "#59ddf5" : "#ffffff");
 		}
+		imageContext.setLineWidth(mobileVI() ? 0.9 : 1);
 		imageContext.beginPath();
 		imageContext.moveTo(draw_ox, draw_oy);
 		imageContext.lineTo(x2,y2);
@@ -640,7 +659,9 @@ class Scope {
     }
 	
     void clear2dView() {
-    	if (imageContext!=null) {
+        if (imageContext != null)
+            imageContext.clearRect(0, 0, rect.width, rect.height);
+        if (imageContext != null && !mobileVI()) {
     		if (sim.printableCheckItem.getState()) {
     			imageContext.setFillStyle("#eee");
     		} else {
@@ -650,6 +671,27 @@ class Scope {
     	}
     	draw_ox = draw_oy = -1;
     }
+
+    private boolean mobileVI() {
+        return mobileDocked && plot2d && !plotXY;
+    }
+
+    void setMobileDocked(boolean mobile) {
+        if (mobileDocked == mobile)
+            return;
+        mobileDocked = mobile;
+        if (plot2d && !plotXY)
+            clear2dView();
+    }
+
+    private static native void fadeMobileTrace(Context2d context, int width, int height) /*-{
+        context.save();
+        context.globalCompositeOperation = "destination-out";
+        context.globalAlpha = 0.01;
+        context.fillStyle = "#000";
+        context.fillRect(0, 0, width, height);
+        context.restore();
+    }-*/;
 	
     /*
     void adjustScale(double x) {
@@ -798,23 +840,41 @@ class Scope {
     	g.context.save();
     	g.context.translate(rect.x, rect.y);
     	g.clipRect(0, 0, rect.width, rect.height);
+        boolean mobile = mobileVI();
+        boolean printable = sim.printableCheckItem.getState();
+        if (mobile)
+            drawMobileVIGrid(g, printable);
     	
     	alphaCounter++;
     	
     	if (alphaCounter>2) {
     		// fade out plot
     		alphaCounter=0;
-    		imageContext.setGlobalAlpha(0.01);
-    		if (sim.printableCheckItem.getState()) {
-    			imageContext.setFillStyle("#ffffff");
-    		} else {
-    			imageContext.setFillStyle("#000000");
-    		}
-    		imageContext.fillRect(0,0,rect.width,rect.height);
-    		imageContext.setGlobalAlpha(1.0);
+            if (mobile) {
+                fadeMobileTrace(imageContext, rect.width, rect.height);
+            } else {
+                imageContext.setGlobalAlpha(0.01);
+                imageContext.setFillStyle(printable ? "#ffffff" : "#000000");
+                imageContext.fillRect(0, 0, rect.width, rect.height);
+                imageContext.setGlobalAlpha(1.0);
+            }
     	}
     	
     	g.context.drawImage(imageContext.getCanvas(), 0.0, 0.0);
+        if (mobile) {
+            if (draw_ox >= 0 && draw_oy >= 0) {
+                g.setColor(printable ? "#000000" : "#59ddf5");
+                g.fillOval(draw_ox - 1, draw_oy - 1, 3, 3);
+            }
+        } else {
+            draw2dAxes(g);
+        }
+        g.context.restore();
+        drawSettingsWheel(g);
+        draw2dCursor(g);
+    }
+
+    private void draw2dAxes(Graphics g) {
 //    	g.drawImage(image, r.x, r.y, null);
     	g.setColor(CircuitElm.whiteColor);
     	g.fillOval(draw_ox-2, draw_oy-2, 5, 5);
@@ -835,7 +895,7 @@ class Scope {
     	}
 	textY=10;
 	g.setColor(CircuitElm.whiteColor);
-    	if (text != null) {
+        if (text != null && dockedHeaderHeight == 0) {
     	    drawInfoText(g, text);
 	}
     	if (showScale && plots.size()>=2 && isManualScale()) {
@@ -845,8 +905,11 @@ class Scope {
     	    String sy=py.getUnitText(py.manScale);
     	    drawInfoText(g,"X="+sx+"/div, Y="+sy+"/div");
     	}
-    	g.context.restore();
-    	drawSettingsWheel(g);
+    }
+
+    private void draw2dCursor(Graphics g) {
+        if (position < 0 && cursorScope != this)
+            return;
     	if ( !sim.dialogIsShowing() && rect.contains(sim.mouseCursorX, sim.mouseCursorY) && plots.size()>=2) {
     	    double gridPx=calc2dGridPx(rect.width, rect.height);
     	    String info[] = new String [2];
@@ -868,11 +931,42 @@ class Scope {
     	    
     	}
     }
+
+    private void drawMobileVIGrid(Graphics g, boolean printable) {
+        int width = rect.width, height = rect.height;
+        g.setColor(printable ? "#ffffff" : "#101315");
+        g.fillRect(0, 0, width, height);
+        if (plots.size() < 2)
+            return;
+
+        double dx = width / 8.0, dy = height / 4.0;
+        int zeroX = (int) (width * .499), zeroY = (int) (height * .499);
+        if (isManualScale()) {
+            dx = dy = calc2dGridPx(width, height);
+            zeroX = (int) (width * .499 + dx * manDivisions * plots.get(0).manVPosition / V_POSITION_STEPS);
+            zeroY = (int) (height * .499 - dy * manDivisions * plots.get(1).manVPosition / V_POSITION_STEPS);
+        }
+        g.setLineWidth(1);
+        g.setColor(printable ? "#d2d8df" : "#304155");
+        // Skip minor divisions that would be too close together to read.
+        if (dx >= 8)
+            for (double x = zeroX % dx; x < width; x += dx)
+                if (Math.abs(x - zeroX) >= 1)
+                    g.drawLine((int) x, 0, (int) x, height);
+        if (dy >= 8)
+            for (double y = zeroY % dy; y < height; y += dy)
+                if (Math.abs(y - zeroY) >= 1)
+                    g.drawLine(0, (int) y, width, (int) y);
+        g.setColor(printable ? "#328155" : "#39c978");
+        g.drawLine(0, zeroY, width, zeroY);
+        g.setColor(printable ? "#40855b" : "#9be9b8");
+        g.drawLine(zeroX, 0, zeroX, height);
+    }
 	
   
     
     boolean showSettingsWheel() {
-	return rect.height > 100 && rect.width > 100;
+	return position < 0 && rect.width > 100 && rect.height > 100;
     }
     
     boolean cursorInSettingsWheel() {
@@ -921,6 +1015,7 @@ class Scope {
     	
     	if (plot2d) {
     		draw2d(g);
+            drawDockedHeader(g);
     		return;
     	}
 
@@ -929,6 +1024,11 @@ class Scope {
     	g.setColor(Color.red);
     	g.context.translate(rect.x, rect.y);    	
     	g.clipRect(0, 0, rect.width, rect.height);
+
+        if (dockedHeaderHeight > 0 && !sim.printableCheckItem.getState()) {
+            g.setColor("#0c121a");
+            g.fillRect(0, 0, rect.width, rect.height);
+        }
 
         if (showFFT) {
             drawFFTVerticalGridLines(g);
@@ -988,8 +1088,8 @@ class Scope {
     	
         drawInfoTexts(g);
     	
-    	g.restore();
-    	
+        g.context.restore();
+        drawDockedHeader(g);
     	drawCursor(g);
     	
     	if (plots.get(0).ptr > 5 && !manualScale) {
@@ -1070,6 +1170,12 @@ class Scope {
 	return ((double)(manDivisions)/2+0.05)*plot.manScale;
     }
     
+    private String getPlotColor(ScopePlot plot, boolean selected, boolean allSelected) {
+        if (allSelected || (sim.scopeSelected == -1 && plot.elm != null && plot.elm.isMouseElm()))
+            return CircuitElm.selectColor.getHexValue();
+        return somethingSelected && !selected ? "#A0A0A0" : plot.color;
+    }
+
     void drawPlot(Graphics g, ScopePlot plot, boolean allPlotsSameUnits, boolean selected, boolean allSelected) {
 	if (plot.elm == null)
 	    return;
@@ -1081,11 +1187,7 @@ class Scope {
     	int x = 0;
     	final int maxy = (rect.height-1)/2;
 
-    	String color = (somethingSelected) ? "#A0A0A0" : plot.color;
-	if (allSelected || (sim.scopeSelected == -1  && plot.elm.isMouseElm()))
-    	    color = CircuitElm.selectColor.getHexValue();
-	else if (selected)
-	    color = plot.color;
+        String color = getPlotColor(plot, selected, allSelected);
     	int ipa = plot.startIndex(rect.width);
     	double maxV[] = plot.maxValues;
     	double minV[] = plot.minValues;
@@ -1133,8 +1235,8 @@ class Scope {
     	    gridStepY = plot.manScale;
     	}
 
-    	String minorDiv = "#404040";
-    	String majorDiv = "#A0A0A0";
+        String minorDiv = dockedHeaderHeight > 0 ? "#303e51" : "#404040";
+        String majorDiv = dockedHeaderHeight > 0 ? "#6c819a" : "#A0A0A0";
     	if (sim.printableCheckItem.getState()) {
     	    minorDiv = "#D0D0D0";
     	    majorDiv = "#808080";
@@ -1345,11 +1447,12 @@ class Scope {
 	int bx = x;
 	if (bx < szw/2)
 	    bx = szw/2;
-	g.fillRect(bx-szw/2, rect.y-szh, szw, szh);
+	int infoTop = dockedHeaderHeight > 0 ? rect.y + rect.height - szh : rect.y - szh;
+	g.fillRect(bx-szw/2, infoTop, szw, szh);
 	g.setColor(CircuitElm.whiteColor);
 	for (i = 0; i != ct; i++) {
 	    int w=(int)g.context.measureText(info[i]).getWidth();
-	    g.drawString(info[i], bx-w/2, rect.y-2-(ct-1-i)*15);
+	    g.drawString(info[i], bx-w/2, infoTop+13+i*15);
 	}
 	
     }
@@ -1438,7 +1541,7 @@ class Scope {
         	    	drawInfoText(g, "H="+CircuitElm.getUnitText(gridStepX, "s")+"/div" + vScaleText);
         	    }
     	    }  else {
-    		if (rect.y + rect.height <= textY+5)
+            if (rect.height <= textY+5)
     		    return;
     		double x = 0;
     		String hs = "H="+CircuitElm.getUnitText(gridStepX, "s")+"/div";
@@ -1454,7 +1557,7 @@ class Scope {
     			if (x+bulletWidth+vScaleWidth > rect.width) {
     			    x=0;
     			    textY += 15;
-    			    if (rect.y + rect.height <= textY+5)
+                            if (rect.height <= textY+5)
     	    		    	return;
     			}
     			g.setColor(p.color);
@@ -1647,19 +1750,18 @@ class Scope {
     }
 
     void drawElmInfo(Graphics g) {
-	String info[] = new String[1];
+	String info[] = new String[10];
 	getElm().getInfo(info);
-	int i;
-	for (i = 0; info[i] != null; i++)
+	for (int i = 0; i < info.length && info[i] != null; i++)
 	    drawInfoText(g, info[i]);
     }
     
     int textY;
     
     void drawInfoText(Graphics g, String text) {
-	if (rect.y + rect.height <= textY+5)
+	if (rect.height <= textY+5)
 	    return;
-	g.drawString(text, 0, textY);
+	g.context.fillText(text, 0, textY, rect.width);
 	textY += 15;
     }
     
@@ -1673,13 +1775,13 @@ class Scope {
     	    return;
     	}
     	ScopePlot plot = visiblePlots.firstElement();
-    	if (showScale) 
+        if (showScale)
     	    drawScale(plot, g);
 //    	if (showMax || showMin)
 //    	    calcMaxAndMin(plot.units);
-    	if (showMax)
+        if (showMax && dockedHeaderHeight < 18)
     	    drawInfoText(g, "Max="+plot.getUnitText(maxValue));
-    	if (showMin) {
+        if (showMin && dockedHeaderHeight < 18) {
     	    int ym=rect.height-5;
     	    g.drawString("Min="+plot.getUnitText(minValue), 0, ym);
     	}
@@ -1690,12 +1792,96 @@ class Scope {
     	if (showDutyCycle)
     	    drawDutyCycle(g);
     	String t = getScopeLabelOrText(true);
-    	if (t != null &&  t!= "") 
+        if (dockedHeaderHeight == 0 && t != null && !t.isEmpty())
     	    drawInfoText(g, t);
     	if (showFreq)
     	    drawFrequency(g);
     	if (showElmInfo)
     	    drawElmInfo(g);
+    }
+
+    String getDockedLabel() {
+        if (text != null && !text.isEmpty())
+            return text;
+        if (plots.isEmpty())
+            return Locale.LS("Scope");
+        CircuitElm elm = getSingleElm();
+        String label = elm == null ? null : elm.getScopeText(plots.firstElement().value);
+        return label == null || label.isEmpty() ? Locale.LS("Scope") : Locale.LS(label);
+    }
+
+    private void drawDockedHeader(Graphics g) {
+        if (dockedHeaderHeight == 0)
+            return;
+
+        int x = rect.x;
+        int y = rect.y - dockedHeaderHeight + 13;
+        String title = getDockedLabel();
+        if (plot2d)
+            title += plotXY ? " · X–Y" : " · V–I";
+
+        g.setColor(CircuitElm.whiteColor);
+        String peaks = "";
+        if (!plot2d && !visiblePlots.isEmpty()) {
+            ScopePlot plot = visiblePlots.firstElement();
+            if (showMax)
+                peaks = Locale.LS("Max") + " " + plot.getUnitText(maxValue);
+            if (showMin)
+                peaks += (peaks.isEmpty() ? "" : "  ·  ") + Locale.LS("Min") + " " + plot.getUnitText(minValue);
+        }
+
+        int peakWidth = 0;
+        if (!peaks.isEmpty()) {
+            peakWidth = Math.min((int) Math.ceil(g.measureWidth(peaks)), rect.width * 2 / 3);
+            if (peakWidth > 0)
+                g.context.fillText(peaks, x + rect.width - peakWidth, y, peakWidth);
+        }
+        int titleWidth = rect.width - peakWidth - (peakWidth == 0 ? 0 : 8);
+        if (titleWidth > 0)
+            g.context.fillText(title, x, y, titleWidth);
+
+        if (mobileVI() && dockedHeaderHeight >= 36 && plots.size() >= 2) {
+            ScopePlot voltage = plots.get(0), current = plots.get(1);
+            String xLabel = isShowingVceAndIc() ? "X  Vce" : "X  Voltage";
+            String yLabel = isShowingVceAndIc() ? "Y  Ic" : "Y  Current";
+            if (showScale) {
+                xLabel += "  " + voltage.getUnitText(isManualScale() ? voltage.manScale : scaleX / 4) + "/div";
+                yLabel += "  " + current.getUnitText(isManualScale() ? current.manScale : scaleY / 2) + "/div";
+            }
+            boolean printable = sim.printableCheckItem.getState();
+            int halfWidth = rect.width / 2;
+            g.setColor(printable ? "#328155" : "#39c978");
+            g.context.fillText(xLabel, x, y + 16, halfWidth);
+            g.setColor(printable ? "#40855b" : "#9be9b8");
+            g.context.fillText(yLabel, x + halfWidth, y + 16, halfWidth);
+        }
+
+        if (plot2d || dockedHeaderHeight < 36 || visiblePlots.isEmpty())
+            return;
+        y += 16;
+        String timeScale = CircuitElm.getUnitText(calcGridStepX(), "s") + "/div";
+        int timeWidth = Math.min((int) Math.ceil(g.measureWidth(timeScale)), rect.width);
+        g.context.fillText(timeScale, x + rect.width - timeWidth, y, timeWidth);
+
+        int remaining = rect.width - timeWidth - 8;
+        for (int i = 0; i < visiblePlots.size(); i++) {
+            ScopePlot plot = visiblePlots.get(i);
+            String channel = getScaleUnitsText(plot.units);
+            if (plot.units == UNITS_V)
+                channel = Locale.LS("Voltage");
+            else if (plot.units == UNITS_A)
+                channel = Locale.LS("Current");
+            if (remaining < 20)
+                break;
+            int labelWidth = Math.min((int) Math.ceil(g.measureWidth(channel)), remaining - 14);
+            g.setColor(getPlotColor(plot, i == selectedPlot, sim.scopeMenuIsSelected(this)));
+            g.fillRect(x, y - 7, 8, 3);
+            g.setColor(CircuitElm.whiteColor);
+            g.context.fillText(channel, x + 12, y, labelWidth);
+            int width = labelWidth + 20;
+            x += width;
+            remaining -= width;
+        }
     }
 
     String getScopeText() {
@@ -1750,6 +1936,8 @@ class Scope {
     }
     
     void properties() {
+	if (sim.openCombinedScopeProperties(this))
+	    return;
 	properties = new ScopePropertiesDialog(sim, this);
 	CirSim.dialogShowing = properties;
     }
@@ -1824,6 +2012,8 @@ class Scope {
 
     
     String dump() {
+        if (plots.isEmpty())
+            return null;
 	ScopePlot vPlot = plots.get(0);
 	
 	CircuitElm elm = vPlot.elm;
@@ -2070,17 +2260,26 @@ class Scope {
     		resetGraph();
     	}
 
-    	if (mi == "showvvsi") {
-    		plot2d = state;
-    		plotXY = false;
-    		resetGraph();
-    	}
+        if (mi == "showvvsi") {
+            CircuitElm elm = getElm();
+            if (state && elm != null) {
+                rememberTimePlots();
+                setValues(VAL_VOLTAGE, VAL_CURRENT, elm, null);
+            } else if (!state) {
+                restoreTimePlots();
+            }
+            plot2d = state;
+            plotXY = false;
+            resetGraph();
+        }
     	if (mi == "manualscale")
 		setManualScale(state, true);
     	if (mi == "plotxy") {
+            if (state)
+                rememberTimePlots();
+            else
+                restoreTimePlots();
     		plotXY = plot2d = state;
-    		if (plot2d)
-    		    plots = visiblePlots;
     		if (plot2d && plots.size() == 1)
     		    selectY();
     		resetGraph();
@@ -2096,6 +2295,29 @@ class Scope {
 //    		sim.plotYElm = yElm;
 //    	}
 //    }
+
+    private void rememberTimePlots() {
+        if (!plot2d)
+            timePlots = new Vector<ScopePlot>(plots);
+    }
+
+    private void restoreTimePlots() {
+        if (timePlots != null) {
+            plots = timePlots;
+            timePlots = null;
+        }
+    }
+
+    void setXYAxis(int axis, CircuitElm elm) {
+        if (!plotXY || axis > plots.size())
+            return;
+        ScopePlot plot = new ScopePlot(elm, UNITS_V, VAL_VOLTAGE, getManScaleFromMaxScale(UNITS_V, false));
+        if (axis == plots.size())
+            plots.add(plot);
+        else
+            plots.set(axis, plot);
+        resetGraph();
+    }
 
     void selectY() {
 	CircuitElm yElm = (plots.size() == 2) ? plots.get(1).elm : null;
@@ -2159,6 +2381,11 @@ class Scope {
     }
     
     boolean needToRemove() {
+        if (timePlots != null) {
+            timePlots.removeIf(plot -> sim.locateElm(plot.elm) < 0);
+            if (timePlots.isEmpty())
+                timePlots = null;
+        }
 	boolean ret = true;
 	boolean removed = false;
 	int i;

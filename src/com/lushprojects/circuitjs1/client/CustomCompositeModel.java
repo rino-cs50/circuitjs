@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.Vector;
 
 import com.google.gwt.storage.client.Storage;
@@ -128,6 +129,10 @@ public class CustomCompositeModel implements Comparable<CustomCompositeModel> {
     }
     
     static CustomCompositeModel undumpModel(StringTokenizer st) {
+	return undumpModel(st, null);
+    }
+
+    static CustomCompositeModel undumpModel(StringTokenizer st, Set<String> staleStates) {
 	String name = CustomLogicModel.unescape(st.nextToken());
 //	CustomCompositeElm.lastModelName = name;
 	CustomCompositeModel model = getModelWithName(name);
@@ -138,6 +143,12 @@ public class CustomCompositeModel implements Comparable<CustomCompositeModel> {
 	    sequenceNumber++;
 	} else if (model.modelCircuit != null) {
 	    // if model has an associated model circuit, don't overwrite it.  keep the old one.
+	    if (staleStates != null) {
+		CustomCompositeModel incoming = new CustomCompositeModel();
+		incoming.undump(st);
+		if (!incoming.nodeList.equals(model.nodeList) || !incoming.elmDump.equals(model.elmDump))
+		    staleStates.add(name);
+	    }
 	    CirSim.console("ignoring model " + name + ", using stored version instead");
 	    return model;
 	}

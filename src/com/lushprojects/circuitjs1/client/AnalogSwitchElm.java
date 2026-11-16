@@ -97,6 +97,8 @@ class AnalogSwitchElm extends CircuitElm {
 	draw2Leads(g);
 	    
 	g.setColor(lightGrayColor);
+	if (sim.isAveragePowerLossEnabled())
+	    setPowerColor(g, false);
 	interpPoint(lead1, lead2, ps, 1, hs);
 	drawThickLine(g, lead1, ps);
 
@@ -118,6 +120,13 @@ class AnalogSwitchElm extends CircuitElm {
     boolean nonLinear() { return true; }
 
     boolean needsPulldown() { return hasFlag(FLAG_PULLDOWN); }
+
+    double getPowerLoss() {
+        double loss = getVoltageDiff() * current;
+        if (needsPulldown())
+            loss += (volts[0] * volts[0] + volts[1] * volts[1]) / r_off;
+        return loss;
+    }
 
     void stamp() {
 	sim.stampNonLinear(nodes[0]);

@@ -64,7 +64,7 @@ public class DarlingtonElm extends CompositeElm {
 	g.fillPolygon(arrowPoly);
 	// draw base
 	setVoltageColor(g, volts[0]);
-	if (sim.powerCheckItem.getState())
+	if (sim.isPowerColorEnabled())
 	    g.setColor(Color.gray);
 	drawThickLine(g, point1, base);
 	// draw dots
